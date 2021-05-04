@@ -391,7 +391,7 @@
                             Else
                                 addnewline = True
                             End If
-                            If Not b.isInfo Or (b.isInfo And Not mapInfoKeys(infotick) = "") Then
+                            If Not b.isInfo Or (b.isInfo AndAlso Not mapInfoKeys(infotick) = "") Then
                                 msg &= trans(tline).Replace("_", " ").Replace("ё", "е")
                             Else
                                 msg &= trans(tline)
