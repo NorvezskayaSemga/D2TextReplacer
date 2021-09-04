@@ -1,7 +1,7 @@
 ﻿Public Class StartForm
 
-    Private Function MessagesPath()
-        Return PathTextBox.Text & ".messages.txt"
+    Private Function LangDictionaryPath()
+        Return PathTextBox.Text & ".dictionary.txt"
     End Function
     Private Function MapPath()
         Return PathTextBox.Text
@@ -11,15 +11,21 @@
     End Function
 
     Sub parse() Handles ParseButton.Click
-        If Not Writer.CheckCanWrite(MessagesPath) Then Exit Sub
+        If Not Writer.CheckCanWrite(LangDictionaryPath) Then Exit Sub
         Dim p As New Parser
-        Call Writer.Write(MessagesPath, p.Parse(SgReader.ReadFile(MapPath)))
+        Dim f As List(Of String) = p.Parse(SgReader.ReadFile(MapPath))
+        Dim L As Dictionary(Of String, String) = Nothing
+        If IO.File.Exists(LangDictionaryPath) Then
+            Dim t As New Translator
+            L = t.ReadLangDictionary(LangDictionaryPath)
+        End If
+        Call Writer.Write(LangDictionaryPath, f, L)
         MsgBox("done")
     End Sub
     Sub make() Handles MakeButton.Click
         If Not Writer.CheckCanWrite(MapTranslatedPath) Then Exit Sub
         Dim t As New Translator
-        Dim L As Dictionary(Of String, String) = t.ReadLangDictionary(MessagesPath)
+        Dim L As Dictionary(Of String, String) = t.ReadLangDictionary(LangDictionaryPath)
         Dim f() As Byte = SgReader.ReadFile(MapPath)
         Dim translated() As Byte = t.Translate(L, f, False)
         IO.File.WriteAllBytes(MapTranslatedPath, translated)
@@ -51,10 +57,14 @@
 
         Dim msg As String = "В текстбокс забиваем адрес файла карты." & vbNewLine &
                             "Кнопка Parse - читает файл и сохраняет блоки с текстовыми сообщениями" & vbNewLine &
-                            "               в файл 'путь к карте'.messages.txt" & vbNewLine &
-                            "Кнопка Make  - собирает новый файл карты. Читает оригинальный файл" & vbNewLine &
-                            "               карты и файл с переводом" & vbNewLine &
-                            "               и проверяет длину текста, D2 не знает буквы ё." & vbNewLine &
+                            "               в файл 'путь к карте'.dictionary.txt." & vbNewLine &
+                            "               Если файл с переводом существует, то в его конец допишет" & vbNewLine &
+                            "               новый текст, появившийся в карте" & vbNewLine &
+                            "               (измененный текст считается новым)" & vbNewLine &
+                            "Кнопка Make  - собирает новый файл карты. Читает оригинальный файл\" & vbNewLine &
+                            "               карты и файл с переводом и проверяет длину текста." & vbNewLine &
+                            "               D2 не знает буквы ё, поэтому она автоматически." & vbNewLine &
+                            "               заменяется на е." & vbNewLine &
                             "После изменения нескольких блоков лучше пересобирать карту и" & vbNewLine &
                             "проверять, запускается ли она в редакторе карт"
         MsgBox(msg)
@@ -76,9 +86,9 @@ End Class
 
 Class Writer
 
-    Public Const BlockDelimiter As String = "--------- --------- --------- --------- --------- ---------" & vbNewLine
-    Public Const OrigText As String = "Original text" & vbNewLine
-    Public Const TransText As String = "Translated text" & vbNewLine
+    Public Const BlockDelimiterKeyword As String = "--------- --------- --------- --------- --------- ---------" & vbNewLine
+    Public Const OrigTextKeyword As String = "# Original text" & vbNewLine
+    Public Const TransTextKeyword As String = "# Translated text" & vbNewLine
 
     Public Shared Function CheckCanWrite(ByRef path As String) As Boolean
         If IO.File.Exists(path) Then
@@ -88,15 +98,42 @@ Class Writer
         Return True
     End Function
 
-    Public Shared Sub Write(ByRef path As String, ByRef content As List(Of String))
-        Dim out(content.Count - 1) As String
+    Public Shared Sub Write(ByRef path As String, ByRef content As List(Of String), _
+                            Optional ByRef langDictionary As Dictionary(Of String, String) = Nothing)
+        Dim out() As String
+        Dim printed As New List(Of String)
         Dim n As Integer = -1
+        If IsNothing(langDictionary) Then
+            ReDim out(content.Count - 1)
+        Else
+            ReDim out(content.Count + langDictionary.Count - 2)
+            Dim keys As List(Of String) = langDictionary.Keys.ToList
+            For Each k As String In keys
+                n += 1
+                out(n) = PrintLine(k, langDictionary.Item(k))
+                printed.Add(k)
+            Next k
+        End If
         For Each s As String In content
-            n += 1
-            out(n) = BlockDelimiter & OrigText & BlockDelimiter & s & vbNewLine & BlockDelimiter & TransText & BlockDelimiter
+            If Not printed.Contains(s) Then
+                n += 1
+                out(n) = PrintLine(s, "")
+                printed.Add(s)
+            End If
         Next s
+        If UBound(out) > n Then ReDim Preserve out(n)
         IO.File.WriteAllLines(path, out, System.Text.Encoding.GetEncoding(SgReader.encID))
     End Sub
+    Private Shared Function PrintLine(ByRef original As String, ByRef translation As String) As String
+        Return BlockDelimiterKeyword & _
+               OrigTextKeyword & _
+               BlockDelimiterKeyword & _
+               original & vbNewLine & _
+               BlockDelimiterKeyword & _
+               TransTextKeyword & _
+               BlockDelimiterKeyword & _
+               translation
+    End Function
 
 End Class
 
@@ -462,9 +499,9 @@ End Class
 
 Class Translator
 
-    Public BlockDelimiter() As Byte = Parser.Block.ToByteArray(Writer.BlockDelimiter)
-    Public OrigText() As Byte = Parser.Block.ToByteArray(Writer.OrigText)
-    Public TransText() As Byte = Parser.Block.ToByteArray(Writer.TransText)
+    Public BlockDelimiter() As Byte = Parser.Block.ToByteArray(Writer.BlockDelimiterKeyword)
+    Public OrigText() As Byte = Parser.Block.ToByteArray(Writer.OrigTextKeyword)
+    Public TransText() As Byte = Parser.Block.ToByteArray(Writer.TransTextKeyword)
 
     Public Function ReadLangDictionary(ByRef path As String) As Dictionary(Of String, String)
         Dim r As New Dictionary(Of String, String)
