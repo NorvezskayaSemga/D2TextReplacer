@@ -251,7 +251,7 @@ Class Parser
                         str = splited(UBound(splited))
                     End If
                     subblocks(i) = str
-                    byteSubblocks(i) = ToByteArray(str)
+                    byteSubblocks(i) = Converter.ToByteArray(str)
                     ignoreByte(i) = MakeIgnoreBytesArray(byteSubblocks(i))
                 Next i
                 owner = o
@@ -267,13 +267,13 @@ Class Parser
                     i2 = Str.IndexOf("%", i1 + 1)
                     If i2 = -1 Then Exit Do
                     Dim b As String = Str.Substring(i1 + 1, i2 - i1 - 1)
-                    Str = Str.Substring(0, i1) & ToStr(b) & Str.Substring(i2 + 1)
+                    str = str.Substring(0, i1) & Converter.ToStr(b) & str.Substring(i2 + 1)
                 Loop
                 Return str
             End Function
             Protected Friend Shared Function MakeIgnoreBytesArray(ByRef byteString() As Byte) As Boolean()
                 Dim r(UBound(byteString)) As Boolean
-                Dim asterix As Byte = ToByteArray("*")(0)
+                Dim asterix As Byte = Converter.ToByteArray("*")(0)
                 For k As Integer = 0 To UBound(byteString) Step 1
                     If byteString(k) = asterix Then r(k) = True
                 Next k
@@ -308,9 +308,9 @@ Class Parser
                             Next j
                             If byteText.Length > r.maxTextLength Then
                                 MsgBox("Unexpected text length " & byteText.Length & vbNewLine & "Max length is " & r.maxTextLength & _
-                                       vbNewLine & owner & " " & subblocks(i) & vbNewLine & ToStr(byteText))
+                                       vbNewLine & owner & " " & subblocks(i) & vbNewLine & Converter.ToStr(byteText))
                             End If
-                            r.text &= ToStr(byteText)
+                            r.text &= Converter.ToStr(byteText)
                             If UBound(byteSubblocks) > 0 Then
                                 startByte += 2
                             Else
@@ -344,27 +344,18 @@ Class Parser
                     If Not collect.Contains(w) Then collect.Add(w)
                 Next w
             Next i
-            byteStartsWith = ToByteArray(StartsWith)
-            byteEndsWith = ToByteArray(EndsWith)
+            byteStartsWith = Converter.ToByteArray(StartsWith)
+            byteEndsWith = Converter.ToByteArray(EndsWith)
             ignoreByte = TxtBlock.MakeIgnoreBytesArray(byteStartsWith)
             Dim n As Integer = -1
             ReDim collectWords(collect.Count - 1), collectWordsByte(collect.Count - 1), collectWordsIgnore(collect.Count - 1)
             For Each w As String In collect
                 n += 1
                 collectWords(n) = w
-                collectWordsByte(n) = ToByteArray(w)
+                collectWordsByte(n) = Converter.ToByteArray(w)
                 collectWordsIgnore(n) = TxtBlock.MakeIgnoreBytesArray(collectWordsByte(n))
             Next w
         End Sub
-        Friend Shared Function ToByteArray(ByRef txt As String) As Byte()
-            Return System.Text.Encoding.GetEncoding(Reader.encID).GetBytes(txt)
-        End Function
-        Friend Shared Function ToStr(ByRef b As Byte) As String
-            Return System.Text.Encoding.GetEncoding(Reader.encID).GetString({b})
-        End Function
-        Friend Shared Function ToStr(ByRef b() As Byte) As String
-            Return System.Text.Encoding.GetEncoding(Reader.encID).GetString(b)
-        End Function
 
         Public Function Check(ByRef fileText() As Byte, ByRef startByte As Integer, ByRef readText As Boolean, _
                               ByRef collected As List(Of String)) As CheckResult
@@ -477,22 +468,22 @@ Class Parser
 
     Public Shared Function GetMapDescription(ByRef fileText() As Byte) As CheckResult
         Dim r As New CheckResult With {.textStartByte = initBlock + 1, .textEndByte = descriptionBlock - 2}
-        r.text = Block.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
+        r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
         Return r
     End Function
     Public Shared Function GetMapAuthor(ByRef fileText() As Byte) As CheckResult
         Dim r As New CheckResult With {.textStartByte = descriptionBlock + 1, .textEndByte = AuthorBlock - 2}
-        r.text = Block.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
+        r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
         Return r
     End Function
     Public Shared Function GetMapName(ByRef fileText() As Byte) As CheckResult
         Dim r As New CheckResult With {.textStartByte = AuthorBlock + 1, .textEndByte = NameBlock}
-        r.text = Block.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
+        r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
         Return r
     End Function
     Public Shared Function GetHostLordName(ByRef fileText() As Byte) As CheckResult
         Dim r As New CheckResult With {.textStartByte = HostLordStart, .textEndByte = HostLordEnd}
-        r.text = Block.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
+        r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
         Return r
     End Function
 
@@ -552,8 +543,8 @@ Class Parser
             If startByte + UBound(text) > UBound(fileText) Then Return False
         End If
         For i As Integer = 0 To UBound(text) Step 1
-            Dim c1 As String = Block.ToStr(fileText(startByte + i))
-            Dim c2 As String = Block.ToStr(text(i))
+            Dim c1 As String = Converter.ToStr(fileText(startByte + i))
+            Dim c2 As String = Converter.ToStr(text(i))
             If IsNothing(ignoreByte) OrElse Not ignoreByte(i) Then
                 If Not fileText(startByte + i) = text(i) Then Return False
             End If
@@ -569,9 +560,9 @@ End Class
 
 Class Translator
 
-    Public BlockDelimiter() As Byte = Parser.Block.ToByteArray(Writer.BlockDelimiterKeyword)
-    Public OrigText() As Byte = Parser.Block.ToByteArray(Writer.OrigTextKeyword)
-    Public TransText() As Byte = Parser.Block.ToByteArray(Writer.TransTextKeyword)
+    Public BlockDelimiter() As Byte = Converter.ToByteArray(Writer.BlockDelimiterKeyword)
+    Public OrigText() As Byte = Converter.ToByteArray(Writer.OrigTextKeyword)
+    Public TransText() As Byte = Converter.ToByteArray(Writer.TransTextKeyword)
 
     Public Function ReadLangDictionary(ByRef path As String) As Dictionary(Of String, String)
         Dim r As New Dictionary(Of String, String)
@@ -661,7 +652,7 @@ Class Translator
             End If
             i += 1
         Loop
-        Dim t As String = Parser.Block.ToStr(txt)
+        Dim t As String = Converter.ToStr(txt)
         If replaseYo Then t = t.Replace("ё", "е")
         Return t
     End Function
@@ -721,7 +712,7 @@ Class Translator
         End Sub
         Public Function Print() As String
             ReDim Preserve output(outI - 1)
-            Return Parser.Block.ToStr(output)
+            Return Converter.ToStr(output)
         End Function
     End Class
 
@@ -770,7 +761,7 @@ Class Translator
         Dim maxLen As Integer = t.textEndByte - t.textStartByte + 1
         If trText.Length > maxLen Then
             MsgBox("Text has length of " & trText.Length & " whereas max. is " & maxLen & "." _
-                   & vbNewLine & Parser.Block.ToStr(trText))
+                   & vbNewLine & Converter.ToStr(trText))
             End
         End If
         For i As Integer = 0 To UBound(trText) Step 1
@@ -783,11 +774,11 @@ Class Translator
         If Not test Then
             trText = GetTranslation(d, t)
         Else
-            trText = Parser.Block.ToByteArray(t.text)
+            trText = Converter.ToByteArray(t.text)
         End If
         If trText.Length > t.maxTextLength * t.byteBlock.Length Then
             MsgBox("Text has length of " & trText.Length & " whereas max. is " & t.maxTextLength * t.byteBlock.Length & "." _
-                   & vbNewLine & Parser.Block.ToStr(trText))
+                   & vbNewLine & Converter.ToStr(trText))
             End
         End If
         If Not t.isLongBlock Then
@@ -807,7 +798,7 @@ Class Translator
                     Call d.AddByte(j2 - j1 + 3)
                     d.outI += 3
                     Call AddRange(d, trText, j1, j2)
-                    Call AddRange(d, Parser.Block.ToByteArray("_"))
+                    Call AddRange(d, Converter.ToByteArray("_"))
                     d.outI += 1
                 Else
                     Call d.AddByte(1)
@@ -831,12 +822,26 @@ Class Translator
 
     Private Function GetTranslation(ByRef d As TData, ByRef t As Parser.CheckResult) As Byte()
         If d.langDict.ContainsKey(t.text) Then
-            Return Parser.Block.ToByteArray(d.langDict.Item(t.text))
+            Return Converter.ToByteArray(d.langDict.Item(t.text))
         ElseIf d.DBFLangDict.ContainsKey(t.text.ToLower) Then
-            Return Parser.Block.ToByteArray(d.DBFLangDict.Item(t.text.ToLower))
+            Return Converter.ToByteArray(d.DBFLangDict.Item(t.text.ToLower))
         Else
             MsgBox("Could not find translation for:" & vbNewLine & t.text)
             End
         End If
     End Function
+End Class
+
+Class Converter
+
+    Public Shared Function ToByteArray(ByRef txt As String) As Byte()
+        Return System.Text.Encoding.GetEncoding(Reader.encID).GetBytes(txt)
+    End Function
+    Public Shared Function ToStr(ByRef b As Byte) As String
+        Return System.Text.Encoding.GetEncoding(Reader.encID).GetString({b})
+    End Function
+    Public Shared Function ToStr(ByRef b() As Byte) As String
+        Return System.Text.Encoding.GetEncoding(Reader.encID).GetString(b)
+    End Function
+
 End Class
