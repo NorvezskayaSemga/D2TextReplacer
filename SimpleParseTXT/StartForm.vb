@@ -569,7 +569,7 @@ Class Translator
             Dim t1 As String = PrepareString(orig)
             Dim t2 As String = PrepareString(trans).Replace("ё", "е")
             orig = Nothing : trans = Nothing
-            dest.Add(t1, t2)
+            If Not t2.Trim(" ", vbTab, Chr(10), Chr(13)) = "" Then dest.Add(t1, t2)
         End If
     End Sub
     Private Function PrepareString(ByRef txt() As Byte) As String
