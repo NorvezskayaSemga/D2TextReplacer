@@ -117,37 +117,11 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="minfoAuthor" xml:space="preserve">
-    <value>CREATOR</value>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="StartTextKeywords" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\StartTextKeywords.txt;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;windows-1251</value>
   </data>
-  <data name="minfoBriefing" xml:space="preserve">
-    <value>BRIEFING</value>
-  </data>
-  <data name="minfoBriefingLong" xml:space="preserve">
-    <value>BRIEFLONG</value>
-  </data>
-  <data name="minfoDesc" xml:space="preserve">
-    <value>DESC</value>
-  </data>
-  <data name="minfoLose" xml:space="preserve">
-    <value>DEBUNKL</value>
-  </data>
-  <data name="minfoName" xml:space="preserve">
-    <value>NAME</value>
-  </data>
-  <data name="minfoWin" xml:space="preserve">
-    <value>DEBUNKW</value>
-  </data>
-  <data name="MsgTextEnd" xml:space="preserve">
-    <value>MUSIC</value>
-  </data>
-  <data name="MsgTextStart" xml:space="preserve">
-    <value>POPUP_TXT</value>
-  </data>
-  <data name="scenDescEnd" xml:space="preserve">
-    <value>PLAYER_1</value>
-  </data>
-  <data name="scenDescStart" xml:space="preserve">
-    <value>AVCScenarioInfo</value>
+  <data name="TextMaxSize" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\TextMaxSize.txt;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089;windows-1251</value>
   </data>
 </root>

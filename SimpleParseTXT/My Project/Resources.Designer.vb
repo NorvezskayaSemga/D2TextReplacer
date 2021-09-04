@@ -61,101 +61,49 @@ Namespace My.Resources
         End Property
         
         '''<summary>
-        '''  Looks up a localized string similar to CREATOR.
+        '''  Looks up a localized string similar to AVCScenarioInfo@@ NAME DESC BRIEFING DEBUNKW+DEBUNKW2+DEBUNKW3+DEBUNKW4+DEBUNKW5 DEBUNKL BRIEFLONG1+BRIEFLONG2+BRIEFLONG3+BRIEFLONG4+BRIEFLONG5 CREATOR
+        '''AVCMidPlayer@@ NAME_TXT
+        '''AVCCapital@@ NAME_TXT
+        '''AVCMidVillage@@ NAME_TXT
+        '''AVCMidRuin@@ TITLE
+        '''AVCMidLandmark@@ DESC_TXT
+        '''AVCMidSiteMerchant@@ TXT_TITLE TXT_DESC
+        '''AVCMidSiteMage@@ TXT_TITLE TXT_DESC
+        '''AVCMidSiteMercs@@ TXT_TITLE TXT_DESC
+        '''AVCMidSiteTrainer@@ TXT_TITLE TXT_DESC
+        '''AVCMidUnit@@ NAME_TXT
+        '''AVCMidStackTemplate@@ NAME_TXT
+        '''AVCMidSubRace@@ NAME_TXT
+        '''A [rest of string was truncated]&quot;;.
         '''</summary>
-        Friend ReadOnly Property minfoAuthor() As String
+        Friend ReadOnly Property StartTextKeywords() As String
             Get
-                Return ResourceManager.GetString("minfoAuthor", resourceCulture)
+                Return ResourceManager.GetString("StartTextKeywords", resourceCulture)
             End Get
         End Property
         
         '''<summary>
-        '''  Looks up a localized string similar to BRIEFING.
+        '''  Looks up a localized string similar to AVCScenarioInfo@@ NAME 64
+        '''AVCScenarioInfo@@ DESC 254
+        '''AVCScenarioInfo@@ BRIEFING 254
+        '''AVCScenarioInfo@@ DEBUNKW 253
+        '''AVCScenarioInfo@@ DEBUNKL 254
+        '''AVCScenarioInfo@@ BRIEFLONG1 253
+        '''AVCScenarioInfo@@ CREATOR 20
+        '''AVCMidPlayer@@ NAME_TXT 15
+        '''AVCCapital@@ NAME_TXT 20
+        '''AVCMidVillage@@ NAME_TXT 20
+        '''AVCMidRuin@@ TITLE 25
+        '''AVCMidLandmark@@ DESC_TXT 254
+        '''AVCMidSiteMerchant@@ TXT_TITLE 40
+        '''AVCMidSiteMerchant@@ TXT_DESC 100
+        '''AVCMidSiteMage@@ TXT_TITLE 40
+        '''AVCMidSiteMage@@ TXT_DESC 100
+        '''AVCMidSiteMercs@@ TXT_TITLE 40 [rest of string was truncated]&quot;;.
         '''</summary>
-        Friend ReadOnly Property minfoBriefing() As String
+        Friend ReadOnly Property TextMaxSize() As String
             Get
-                Return ResourceManager.GetString("minfoBriefing", resourceCulture)
-            End Get
-        End Property
-        
-        '''<summary>
-        '''  Looks up a localized string similar to BRIEFLONG.
-        '''</summary>
-        Friend ReadOnly Property minfoBriefingLong() As String
-            Get
-                Return ResourceManager.GetString("minfoBriefingLong", resourceCulture)
-            End Get
-        End Property
-        
-        '''<summary>
-        '''  Looks up a localized string similar to DESC.
-        '''</summary>
-        Friend ReadOnly Property minfoDesc() As String
-            Get
-                Return ResourceManager.GetString("minfoDesc", resourceCulture)
-            End Get
-        End Property
-        
-        '''<summary>
-        '''  Looks up a localized string similar to DEBUNKL.
-        '''</summary>
-        Friend ReadOnly Property minfoLose() As String
-            Get
-                Return ResourceManager.GetString("minfoLose", resourceCulture)
-            End Get
-        End Property
-        
-        '''<summary>
-        '''  Looks up a localized string similar to NAME.
-        '''</summary>
-        Friend ReadOnly Property minfoName() As String
-            Get
-                Return ResourceManager.GetString("minfoName", resourceCulture)
-            End Get
-        End Property
-        
-        '''<summary>
-        '''  Looks up a localized string similar to DEBUNKW.
-        '''</summary>
-        Friend ReadOnly Property minfoWin() As String
-            Get
-                Return ResourceManager.GetString("minfoWin", resourceCulture)
-            End Get
-        End Property
-        
-        '''<summary>
-        '''  Looks up a localized string similar to MUSIC.
-        '''</summary>
-        Friend ReadOnly Property MsgTextEnd() As String
-            Get
-                Return ResourceManager.GetString("MsgTextEnd", resourceCulture)
-            End Get
-        End Property
-        
-        '''<summary>
-        '''  Looks up a localized string similar to POPUP_TXT.
-        '''</summary>
-        Friend ReadOnly Property MsgTextStart() As String
-            Get
-                Return ResourceManager.GetString("MsgTextStart", resourceCulture)
-            End Get
-        End Property
-        
-        '''<summary>
-        '''  Looks up a localized string similar to PLAYER_1.
-        '''</summary>
-        Friend ReadOnly Property scenDescEnd() As String
-            Get
-                Return ResourceManager.GetString("scenDescEnd", resourceCulture)
-            End Get
-        End Property
-        
-        '''<summary>
-        '''  Looks up a localized string similar to AVCScenarioInfo.
-        '''</summary>
-        Friend ReadOnly Property scenDescStart() As String
-            Get
-                Return ResourceManager.GetString("scenDescStart", resourceCulture)
+                Return ResourceManager.GetString("TextMaxSize", resourceCulture)
             End Get
         End Property
     End Module
