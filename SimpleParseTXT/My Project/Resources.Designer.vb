@@ -61,6 +61,15 @@ Namespace My.Resources
         End Property
         
         '''<summary>
+        '''  Looks up a localized string similar to ./lastpath.txt.
+        '''</summary>
+        Friend ReadOnly Property lastPathFile() As String
+            Get
+                Return ResourceManager.GetString("lastPathFile", resourceCulture)
+            End Get
+        End Property
+        
+        '''<summary>
         '''  Looks up a localized string similar to AVCScenarioInfo@@ NAME DESC BRIEFING DEBUNKW+DEBUNKW2+DEBUNKW3+DEBUNKW4+DEBUNKW5 DEBUNKL BRIEFLONG1+BRIEFLONG2+BRIEFLONG3+BRIEFLONG4+BRIEFLONG5 CREATOR
         '''AVCMidPlayer@@ NAME_TXT
         '''AVCCapital@@ NAME_TXT

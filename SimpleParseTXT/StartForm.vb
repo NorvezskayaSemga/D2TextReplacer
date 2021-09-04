@@ -1,40 +1,51 @@
-﻿Public Class StartForm
+﻿
+Public Class StartForm
 
-    Private Function LangDictionaryPath()
+    Private Function LangDictionaryPath() As String
         Return PathTextBox.Text & ".dictionary.txt"
     End Function
-    Private Function MapPath()
+    Private Function MapPath() As String
         Return PathTextBox.Text
     End Function
-    Private Function MapTranslatedPath()
+    Private Function MapTranslatedPath() As String
         Return PathTextBox.Text & ".translated.sg"
+    End Function
+    Private Function TGlobal1Path() As String
+        Return TglobalTextBox1.Text
+    End Function
+    Private Function Tglobal2Path() As String
+        Return TglobalTextBox2.Text
     End Function
 
     Sub parse() Handles ParseButton.Click
+        Call WriteLastPathFile()
         If Not Writer.CheckCanWrite(LangDictionaryPath) Then Exit Sub
         Dim p As New Parser
-        Dim f As List(Of String) = p.Parse(SgReader.ReadFile(MapPath))
+        Dim f As List(Of String) = p.Parse(Reader.ReadFile(MapPath))
         Dim L As Dictionary(Of String, String) = Nothing
+        Dim DBFL As Dictionary(Of String, String) = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
         If IO.File.Exists(LangDictionaryPath) Then
             Dim t As New Translator
             L = t.ReadLangDictionary(LangDictionaryPath)
         End If
-        Call Writer.Write(LangDictionaryPath, f, L)
+        Call Writer.Write(LangDictionaryPath, f, L, DBFL)
         MsgBox("done")
     End Sub
     Sub make() Handles MakeButton.Click
+        Call WriteLastPathFile()
         If Not Writer.CheckCanWrite(MapTranslatedPath) Then Exit Sub
         Dim t As New Translator
         Dim L As Dictionary(Of String, String) = t.ReadLangDictionary(LangDictionaryPath)
-        Dim f() As Byte = SgReader.ReadFile(MapPath)
-        Dim translated() As Byte = t.Translate(L, f, False)
+        Dim DBFL As Dictionary(Of String, String) = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
+        Dim f() As Byte = Reader.ReadFile(MapPath)
+        Dim translated() As Byte = t.Translate(L, DBFL, f, False)
         IO.File.WriteAllBytes(MapTranslatedPath, translated)
         MsgBox("done")
     End Sub
     Sub test() Handles TestButton.Click
         Dim t As New Translator
-        Dim f() As Byte = SgReader.ReadFile(MapPath)
-        Dim translated() As Byte = t.Translate(Nothing, f, True)
+        Dim f() As Byte = Reader.ReadFile(MapPath)
+        Dim translated() As Byte = t.Translate(Nothing, Nothing, f, True)
         For i As Integer = 0 To UBound(f) Step 1
             If Not f(i) = translated(i) Then
                 Throw New Exception
@@ -47,10 +58,42 @@
     End Sub
 
     Sub meload() Handles Me.Load
-        TestButton.Visible = True
-        If IO.File.Exists("./lastpath.txt") Then
-            PathTextBox.Text = IO.File.ReadAllText("./lastpath.txt")
-        End If
+        TestButton.Visible = False
+        PathTextBox.Text = Reader.GetMapPath
+        TglobalTextBox1.Text = Reader.GetTglobal1Path
+        TglobalTextBox2.Text = Reader.GetTglobal2Path
+    End Sub
+    Private Sub WriteLastPathFile()
+        Call Writer.WriteLastPathFile(PathTextBox.Text, TglobalTextBox1.Text, TglobalTextBox2.Text)
+    End Sub
+
+    Private Sub SelectFile(obj As Object, e As EventArgs) Handles MapButton.Click, Tglobal1Button.Click, Tglobal2Button.Click
+        Dim buttons() As Button = {MapButton, Tglobal1Button, Tglobal2Button}
+        Dim boxes() As TextBox = {PathTextBox, TglobalTextBox1, TglobalTextBox2}
+        Dim filters() As String = {"Map files (*.sg)|*.sg", "TGlobal table (*.dbf)|*.dbf", "TGlobal table (*.dbf)|*.dbf"}
+        For i As Integer = 0 To UBound(buttons) Step 1
+            If obj.Equals(buttons(i)) Then
+                Dim d As New OpenFileDialog
+                Try
+                    If IO.Directory.Exists(boxes(i).Text) Then
+                        d.InitialDirectory = boxes(i).Text
+                    Else
+                        d.InitialDirectory = System.IO.Path.GetDirectoryName(boxes(i).Text)
+                    End If
+                Catch
+                    d.InitialDirectory = "C:\"
+                End Try
+                d.Filter = filters(i)
+                Dim path As String
+                If d.ShowDialog() = DialogResult.OK Then
+                    path = d.FileName
+                Else
+                    Exit Sub
+                End If
+                boxes(i).Text = path
+                Exit For
+            End If
+        Next i
     End Sub
 
     Sub help() Handles HelpB.Click
@@ -71,16 +114,33 @@
     End Sub
 End Class
 
-Class SgReader
+Class Reader
     Public Const encID As Integer = 1251
 
     Public Shared Function ReadFile(ByRef path As String) As Byte()
-        IO.File.WriteAllText("./lastpath.txt", path)
-        If Not IO.File.Exists(path) Then
-            MsgBox("Не могу найти файл " & path)
-            End
-        End If
         Return IO.File.ReadAllBytes(path)
+    End Function
+
+    Public Shared Function GetMapPath() As String
+        Return ReadLastPathFile(0)
+    End Function
+    Public Shared Function GetTglobal1Path() As String
+        Return ReadLastPathFile(1)
+    End Function
+    Public Shared Function GetTglobal2Path() As String
+        Return ReadLastPathFile(2)
+    End Function
+    Private Shared Function ReadLastPathFile(ByRef line As Integer) As String
+        If IO.File.Exists(My.Resources.lastPathFile) Then
+            Dim lines() As String = IO.File.ReadAllLines(My.Resources.lastPathFile)
+            If line > UBound(lines) Then
+                Return "C:\"
+            Else
+                Return lines(line)
+            End If
+        Else
+            Return "C:\"
+        End If
     End Function
 End Class
 
@@ -99,8 +159,9 @@ Class Writer
     End Function
 
     Public Shared Sub Write(ByRef path As String, ByRef content As List(Of String), _
-                            Optional ByRef langDictionary As Dictionary(Of String, String) = Nothing)
-        Dim out() As String
+                            Optional ByRef langDictionary As Dictionary(Of String, String) = Nothing, _
+                            Optional ByRef DBFLangDictionary As Dictionary(Of String, String) = Nothing)
+        Dim out(), t As String
         Dim printed As New List(Of String)
         Dim n As Integer = -1
         If IsNothing(langDictionary) Then
@@ -117,12 +178,16 @@ Class Writer
         For Each s As String In content
             If Not printed.Contains(s) Then
                 n += 1
-                out(n) = PrintLine(s, "")
+                If DBFLangDictionary.ContainsKey(s.ToLower) Then
+                    out(n) = PrintLine(s, DBFLangDictionary.Item(s.ToLower))
+                Else
+                    out(n) = PrintLine(s, "")
+                End If
                 printed.Add(s)
             End If
         Next s
         If UBound(out) > n Then ReDim Preserve out(n)
-        IO.File.WriteAllLines(path, out, System.Text.Encoding.GetEncoding(SgReader.encID))
+        IO.File.WriteAllLines(path, out, System.Text.Encoding.GetEncoding(Reader.encID))
     End Sub
     Private Shared Function PrintLine(ByRef original As String, ByRef translation As String) As String
         Return BlockDelimiterKeyword & _
@@ -134,6 +199,11 @@ Class Writer
                BlockDelimiterKeyword & _
                translation
     End Function
+
+    Public Shared Sub WriteLastPathFile(ByRef mapFile As String, ByRef tglobal1 As String, ByRef tglobal2 As String)
+        Dim lines() As String = {mapFile, tglobal1, tglobal2}
+        IO.File.WriteAllLines(My.Resources.lastPathFile, lines)
+    End Sub
 
 End Class
 
@@ -287,13 +357,13 @@ Class Parser
             Next w
         End Sub
         Friend Shared Function ToByteArray(ByRef txt As String) As Byte()
-            Return System.Text.Encoding.GetEncoding(SgReader.encID).GetBytes(txt)
+            Return System.Text.Encoding.GetEncoding(Reader.encID).GetBytes(txt)
         End Function
         Friend Shared Function ToStr(ByRef b As Byte) As String
-            Return System.Text.Encoding.GetEncoding(SgReader.encID).GetString({b})
+            Return System.Text.Encoding.GetEncoding(Reader.encID).GetString({b})
         End Function
         Friend Shared Function ToStr(ByRef b() As Byte) As String
-            Return System.Text.Encoding.GetEncoding(SgReader.encID).GetString(b)
+            Return System.Text.Encoding.GetEncoding(Reader.encID).GetString(b)
         End Function
 
         Public Function Check(ByRef fileText() As Byte, ByRef startByte As Integer, ByRef readText As Boolean, _
@@ -582,8 +652,32 @@ Class Translator
         Return t
     End Function
 
+    Public Shared Function DBFLangDictionary(ByRef textTable1 As String, ByRef textTable2 As String) As Dictionary(Of String, String)
+        Dim d() As Dictionary(Of String, String) = {NevendaarTools.GameDataModel.ReadTextTable(textTable1), _
+                                                    NevendaarTools.GameDataModel.ReadTextTable(textTable2)}
+        Dim dlower(UBound(d)) As Dictionary(Of String, String)
+        Dim keys As List(Of String)
+        For i As Integer = 0 To UBound(d) Step 1
+            dlower(i) = New Dictionary(Of String, String)
+            keys = d(i).Keys.ToList
+            For Each k As String In keys
+                dlower(i).Add(k.ToLower, d(i).Item(k))
+            Next k
+        Next i
+        Dim result As New Dictionary(Of String, String)
+        keys = dlower(0).Keys.ToList
+        For Each k As String In keys
+            If dlower(1).ContainsKey(k) Then
+                For i As Integer = 0 To 1 Step 1
+                    If Not result.ContainsKey(dlower(i).Item(k).ToLower) Then result.Add(dlower(i).Item(k).ToLower, dlower(1 - i).Item(k))
+                Next i
+            End If
+        Next k
+        Return result
+    End Function
+
     Private Class TData
-        Public langDict As Dictionary(Of String, String)
+        Public langDict, DBFLangDict As Dictionary(Of String, String)
         Public fileText() As Byte
         Public output() As Byte
         Public outI As Integer
@@ -599,8 +693,9 @@ Class Translator
         End Function
     End Class
 
-    Public Function Translate(ByRef langDict As Dictionary(Of String, String), ByRef fileText() As Byte, ByRef test As Boolean) As Byte()
-        Dim d As New TData With {.fileText = fileText, .langDict = langDict, .outI = 0}
+    Public Function Translate(ByRef langDict As Dictionary(Of String, String), ByRef DBFLangDict As Dictionary(Of String, String), _
+                              ByRef fileText() As Byte, ByRef test As Boolean) As Byte()
+        Dim d As New TData With {.fileText = fileText, .langDict = langDict, .DBFLangDict = DBFLangDict, .outI = 0}
         ReDim d.output(UBound(fileText))
         If Not test Then
             Call CopyHeader(d)
@@ -703,10 +798,13 @@ Class Translator
     End Sub
 
     Private Function GetTranslation(ByRef d As TData, ByRef t As Parser.CheckResult) As Byte()
-        If Not d.langDict.ContainsKey(t.text) Then
+        If d.langDict.ContainsKey(t.text) Then
+            Return Parser.Block.ToByteArray(d.langDict.Item(t.text))
+        ElseIf d.DBFLangDict.ContainsKey(t.text.ToLower) Then
+            Return Parser.Block.ToByteArray(d.DBFLangDict.Item(t.text.ToLower))
+        Else
             MsgBox("Could not find translation for:" & vbNewLine & t.text)
             End
         End If
-        Return Parser.Block.ToByteArray(d.langDict.Item(t.text))
     End Function
 End Class
