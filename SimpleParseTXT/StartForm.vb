@@ -161,7 +161,7 @@ Class Writer
     Public Shared Sub Write(ByRef path As String, ByRef content As List(Of String), _
                             Optional ByRef langDictionary As Dictionary(Of String, String) = Nothing, _
                             Optional ByRef DBFLangDictionary As Dictionary(Of String, String) = Nothing)
-        Dim out(), t As String
+        Dim out() As String
         Dim printed As New List(Of String)
         Dim n As Integer = -1
         If IsNothing(langDictionary) Then
@@ -636,20 +636,50 @@ Class Translator
     End Sub
     Private Sub AddString(ByRef dest As Dictionary(Of String, String), ByRef orig() As Byte, ByRef trans() As Byte)
         If Not IsNothing(orig) And Not IsNothing(trans) Then
-            Dim t1 As String = PrepareString(orig)
-            Dim t2 As String = PrepareString(trans).Replace("ё", "е")
+            Dim t1 As String = PrepareString(orig, False)
+            Dim t2 As String = PrepareString(trans, True)
             orig = Nothing : trans = Nothing
             If Not t2.Trim(" ", vbTab, Chr(10), Chr(13)) = "" Then dest.Add(t1, t2)
         End If
     End Sub
-    Private Function PrepareString(ByRef txt() As Byte) As String
+    Private Shared Function PrepareString(ByRef txt() As Byte, ByRef replaseYo As Boolean) As String
         Dim n As Integer = UBound(txt)
         Do While (txt(n) = 10 Or txt(n) = 13) And n > 0
             n -= 1
         Loop
         If n < UBound(txt) Then ReDim Preserve txt(n)
+        Dim i As Integer = 0
+        Do While i < UBound(txt) - 1
+            If txt(i) = 13 And txt(i + 1) = 10 Then
+                txt(i) = 10
+                If UBound(txt) > i + 1 Then
+                    For j As Integer = i + 2 To UBound(txt) Step 1
+                        txt(j - 1) = txt(j)
+                    Next j
+                End If
+                ReDim Preserve txt(UBound(txt) - 1)
+            End If
+            i += 1
+        Loop
         Dim t As String = Parser.Block.ToStr(txt)
+        If replaseYo Then t = t.Replace("ё", "е")
         Return t
+    End Function
+    Private Shared Function PrepareString(ByRef txt As String, ByRef replaseYo As Boolean) As String
+        Dim n As Integer = txt.Length - 1
+        Do While (txt(n) = Chr(10) Or txt(n) = Chr(13)) And n > 0
+            n -= 1
+        Loop
+        If n < txt.Length - 1 Then txt = txt.Substring(0, n + 1)
+        Dim i As Integer = 0
+        Do While i < txt.Length - 2
+            If txt(i) = Chr(13) And txt(i + 1) = Chr(10) Then
+                txt = txt.Substring(0, i) & Chr(10) & txt.Substring(i + 2)
+            End If
+            i += 1
+        Loop
+        If replaseYo Then txt = txt.Replace("ё", "е")
+        Return txt
     End Function
 
     Public Shared Function DBFLangDictionary(ByRef textTable1 As String, ByRef textTable2 As String) As Dictionary(Of String, String)
@@ -669,7 +699,9 @@ Class Translator
         For Each k As String In keys
             If dlower(1).ContainsKey(k) Then
                 For i As Integer = 0 To 1 Step 1
-                    If Not result.ContainsKey(dlower(i).Item(k).ToLower) Then result.Add(dlower(i).Item(k).ToLower, dlower(1 - i).Item(k))
+                    If Not result.ContainsKey(dlower(i).Item(k).ToLower) Then
+                        result.Add(dlower(i).Item(k).ToLower, PrepareString(dlower(1 - i).Item(k), True))
+                    End If
                 Next i
             End If
         Next k
