@@ -685,6 +685,11 @@ Class Translator
     End Function
 
     Public Shared Function DBFLangDictionary(ByRef textTable1 As String, ByRef textTable2 As String) As Dictionary(Of String, String)
+        For Each f As String In {textTable1, textTable2}
+            If Not IO.File.Exists(f) OrElse Not IO.Path.GetExtension(f).ToLower = ".dbf" Then
+                Return Nothing
+            End If
+        Next
         Dim d() As Dictionary(Of String, String) = {NevendaarTools.GameDataModel.ReadTextTable(textTable1), _
                                                     NevendaarTools.GameDataModel.ReadTextTable(textTable2)}
         Dim dlower(UBound(d)) As Dictionary(Of String, String)
