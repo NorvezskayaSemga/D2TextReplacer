@@ -34,11 +34,12 @@ Partial Class StartForm
         Me.Tglobal1Button = New System.Windows.Forms.Button()
         Me.Tglobal2Button = New System.Windows.Forms.Button()
         Me.MapButton = New System.Windows.Forms.Button()
+        Me.AutotranslateCheckBox = New System.Windows.Forms.CheckBox()
         Me.SuspendLayout()
         '
         'PathTextBox
         '
-        Me.PathTextBox.Location = New System.Drawing.Point(15, 133)
+        Me.PathTextBox.Location = New System.Drawing.Point(15, 143)
         Me.PathTextBox.Name = "PathTextBox"
         Me.PathTextBox.Size = New System.Drawing.Size(462, 20)
         Me.PathTextBox.TabIndex = 30
@@ -46,18 +47,18 @@ Partial Class StartForm
         '
         'ParseButton
         '
-        Me.ParseButton.Location = New System.Drawing.Point(64, 168)
+        Me.ParseButton.Location = New System.Drawing.Point(64, 178)
         Me.ParseButton.Name = "ParseButton"
-        Me.ParseButton.Size = New System.Drawing.Size(147, 57)
+        Me.ParseButton.Size = New System.Drawing.Size(147, 47)
         Me.ParseButton.TabIndex = 51
         Me.ParseButton.Text = "Parse .sg"
         Me.ParseButton.UseVisualStyleBackColor = True
         '
         'MakeButton
         '
-        Me.MakeButton.Location = New System.Drawing.Point(64, 231)
+        Me.MakeButton.Location = New System.Drawing.Point(64, 241)
         Me.MakeButton.Name = "MakeButton"
-        Me.MakeButton.Size = New System.Drawing.Size(147, 57)
+        Me.MakeButton.Size = New System.Drawing.Size(147, 47)
         Me.MakeButton.TabIndex = 53
         Me.MakeButton.Text = "Make .sg"
         Me.MakeButton.UseVisualStyleBackColor = True
@@ -65,7 +66,7 @@ Partial Class StartForm
         'Label1
         '
         Me.Label1.AutoSize = True
-        Me.Label1.Location = New System.Drawing.Point(12, 117)
+        Me.Label1.Location = New System.Drawing.Point(12, 127)
         Me.Label1.Name = "Label1"
         Me.Label1.Size = New System.Drawing.Size(91, 13)
         Me.Label1.TabIndex = 3
@@ -73,18 +74,18 @@ Partial Class StartForm
         '
         'TestButton
         '
-        Me.TestButton.Location = New System.Drawing.Point(263, 168)
+        Me.TestButton.Location = New System.Drawing.Point(263, 178)
         Me.TestButton.Name = "TestButton"
-        Me.TestButton.Size = New System.Drawing.Size(147, 57)
+        Me.TestButton.Size = New System.Drawing.Size(147, 47)
         Me.TestButton.TabIndex = 52
         Me.TestButton.Text = "Test"
         Me.TestButton.UseVisualStyleBackColor = True
         '
         'HelpB
         '
-        Me.HelpB.Location = New System.Drawing.Point(263, 231)
+        Me.HelpB.Location = New System.Drawing.Point(263, 241)
         Me.HelpB.Name = "HelpB"
-        Me.HelpB.Size = New System.Drawing.Size(147, 57)
+        Me.HelpB.Size = New System.Drawing.Size(147, 47)
         Me.HelpB.TabIndex = 54
         Me.HelpB.Text = "Help"
         Me.HelpB.UseVisualStyleBackColor = True
@@ -134,18 +135,29 @@ Partial Class StartForm
         '
         'MapButton
         '
-        Me.MapButton.Location = New System.Drawing.Point(483, 133)
+        Me.MapButton.Location = New System.Drawing.Point(483, 143)
         Me.MapButton.Name = "MapButton"
         Me.MapButton.Size = New System.Drawing.Size(65, 20)
         Me.MapButton.TabIndex = 31
         Me.MapButton.Text = "Select"
         Me.MapButton.UseVisualStyleBackColor = True
         '
+        'AutotranslateCheckBox
+        '
+        Me.AutotranslateCheckBox.AutoSize = True
+        Me.AutotranslateCheckBox.Location = New System.Drawing.Point(12, 94)
+        Me.AutotranslateCheckBox.Name = "AutotranslateCheckBox"
+        Me.AutotranslateCheckBox.Size = New System.Drawing.Size(226, 17)
+        Me.AutotranslateCheckBox.TabIndex = 55
+        Me.AutotranslateCheckBox.Text = "Autotranslate by means of game resources"
+        Me.AutotranslateCheckBox.UseVisualStyleBackColor = True
+        '
         'StartForm
         '
         Me.AutoScaleDimensions = New System.Drawing.SizeF(6.0!, 13.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
         Me.ClientSize = New System.Drawing.Size(554, 300)
+        Me.Controls.Add(Me.AutotranslateCheckBox)
         Me.Controls.Add(Me.MapButton)
         Me.Controls.Add(Me.Tglobal2Button)
         Me.Controls.Add(Me.Tglobal1Button)
@@ -176,5 +188,6 @@ Partial Class StartForm
     Friend WithEvents Tglobal1Button As System.Windows.Forms.Button
     Friend WithEvents Tglobal2Button As System.Windows.Forms.Button
     Friend WithEvents MapButton As System.Windows.Forms.Button
+    Friend WithEvents AutotranslateCheckBox As System.Windows.Forms.CheckBox
 
 End Class

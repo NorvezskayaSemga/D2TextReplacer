@@ -16,6 +16,9 @@ Public Class StartForm
     Private Function Tglobal2Path() As String
         Return TglobalTextBox2.Text
     End Function
+    Private Function Autotranslate() As Boolean
+        Return AutotranslateCheckBox.Checked
+    End Function
 
     Sub parse() Handles ParseButton.Click
         Call WriteLastPathFile()
@@ -23,7 +26,8 @@ Public Class StartForm
         Dim p As New Parser
         Dim f As List(Of String) = p.Parse(Reader.ReadFile(MapPath))
         Dim L As Dictionary(Of String, String) = Nothing
-        Dim DBFL As Dictionary(Of String, String) = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
+        Dim DBFL As Dictionary(Of String, String) = Nothing
+        If Autotranslate() Then DBFL = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
         If IO.File.Exists(LangDictionaryPath) Then
             Dim t As New Translator
             L = t.ReadLangDictionary(LangDictionaryPath)
@@ -36,7 +40,8 @@ Public Class StartForm
         If Not Writer.CheckCanWrite(MapTranslatedPath) Then Exit Sub
         Dim t As New Translator
         Dim L As Dictionary(Of String, String) = t.ReadLangDictionary(LangDictionaryPath)
-        Dim DBFL As Dictionary(Of String, String) = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
+        Dim DBFL As Dictionary(Of String, String) = Nothing
+        If Autotranslate() Then DBFL = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
         Dim f() As Byte = Reader.ReadFile(MapPath)
         Dim translated() As Byte = t.Translate(L, DBFL, f, False)
         IO.File.WriteAllBytes(MapTranslatedPath, translated)
@@ -62,9 +67,10 @@ Public Class StartForm
         PathTextBox.Text = Reader.GetMapPath
         TglobalTextBox1.Text = Reader.GetTglobal1Path
         TglobalTextBox2.Text = Reader.GetTglobal2Path
+        AutotranslateCheckBox.Checked = Reader.GetAutotranslateState
     End Sub
     Private Sub WriteLastPathFile()
-        Call Writer.WriteLastPathFile(PathTextBox.Text, TglobalTextBox1.Text, TglobalTextBox2.Text)
+        Call Writer.WriteLastPathFile(PathTextBox.Text, TglobalTextBox1.Text, TglobalTextBox2.Text, AutotranslateCheckBox.Checked)
     End Sub
 
     Private Sub SelectFile(obj As Object, e As EventArgs) Handles MapButton.Click, Tglobal1Button.Click, Tglobal2Button.Click
@@ -130,14 +136,18 @@ Class Reader
     Public Shared Function GetTglobal2Path() As String
         Return ReadLastPathFile(2)
     End Function
+    Public Shared Function GetAutotranslateState() As String
+        Return CBool(ReadLastPathFile(3))
+    End Function
     Private Shared Function ReadLastPathFile(ByRef line As Integer) As String
         If IO.File.Exists(My.Resources.lastPathFile) Then
             Dim lines() As String = IO.File.ReadAllLines(My.Resources.lastPathFile)
-            If line > UBound(lines) Then
-                Return "C:\"
-            Else
+            If line <= UBound(lines) Then
                 Return lines(line)
             End If
+        End If
+        If line = 3 Then
+            Return "True"
         Else
             Return "C:\"
         End If
@@ -178,7 +188,7 @@ Class Writer
         For Each s As String In content
             If Not printed.Contains(s) Then
                 n += 1
-                If DBFLangDictionary.ContainsKey(s.ToLower) Then
+                If Not IsNothing(DBFLangDictionary) AndAlso DBFLangDictionary.ContainsKey(s.ToLower) Then
                     out(n) = PrintLine(s, DBFLangDictionary.Item(s.ToLower))
                 Else
                     out(n) = PrintLine(s, "")
@@ -200,8 +210,9 @@ Class Writer
                translation
     End Function
 
-    Public Shared Sub WriteLastPathFile(ByRef mapFile As String, ByRef tglobal1 As String, ByRef tglobal2 As String)
-        Dim lines() As String = {mapFile, tglobal1, tglobal2}
+    Public Shared Sub WriteLastPathFile(ByRef mapFile As String, ByRef tglobal1 As String, ByRef tglobal2 As String, _
+                                        ByRef AutotranslateCheckBox As Boolean)
+        Dim lines() As String = {mapFile, tglobal1, tglobal2, AutotranslateCheckBox.ToString}
         IO.File.WriteAllLines(My.Resources.lastPathFile, lines)
     End Sub
 
@@ -823,7 +834,7 @@ Class Translator
     Private Function GetTranslation(ByRef d As TData, ByRef t As Parser.CheckResult) As Byte()
         If d.langDict.ContainsKey(t.text) Then
             Return Converter.ToByteArray(d.langDict.Item(t.text))
-        ElseIf d.DBFLangDict.ContainsKey(t.text.ToLower) Then
+        ElseIf Not IsNothing(d.DBFLangDict) AndAlso d.DBFLangDict.ContainsKey(t.text.ToLower) Then
             Return Converter.ToByteArray(d.DBFLangDict.Item(t.text.ToLower))
         Else
             MsgBox("Could not find translation for:" & vbNewLine & t.text)
