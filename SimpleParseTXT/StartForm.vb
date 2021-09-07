@@ -837,10 +837,11 @@ Class Translator
     End Sub
 
     Private Function GetTranslation(ByRef d As TData, ByRef t As Parser.CheckResult) As Byte()
-        If d.langDict.ContainsKey(t.text) Then
-            Return Converter.ToByteArray(d.langDict.Item(t.text))
-        ElseIf Not IsNothing(d.DBFLangDict) AndAlso d.DBFLangDict.ContainsKey(t.text.ToLower) Then
-            Return Converter.ToByteArray(d.DBFLangDict.Item(t.text.ToLower))
+        Dim p As String = PrepareString(t.text, False)
+        If d.langDict.ContainsKey(p) Then
+            Return Converter.ToByteArray(d.langDict.Item(p))
+        ElseIf Not IsNothing(d.DBFLangDict) AndAlso d.DBFLangDict.ContainsKey(p.ToLower) Then
+            Return Converter.ToByteArray(d.DBFLangDict.Item(p.ToLower))
         Else
             MsgBox("Could not find translation for:" & vbNewLine & t.text)
             End
