@@ -1,4 +1,5 @@
-﻿
+﻿Imports ClosedXML
+
 Public Class StartForm
 
     Private Function LangDictionaryPath() As String
@@ -19,6 +20,9 @@ Public Class StartForm
     Private Function Autotranslate() As Boolean
         Return AutotranslateCheckBox.Checked
     End Function
+    Private Function ResourcesDir()
+        Return ".\Resources"
+    End Function
 
     Sub parse() Handles ParseButton.Click
         Call WriteLastPathFile()
@@ -28,11 +32,13 @@ Public Class StartForm
         Dim L As Dictionary(Of String, String) = Nothing
         Dim DBFL As Dictionary(Of String, String) = Nothing
         If Autotranslate() Then DBFL = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
+        Dim XlL As Dictionary(Of String, String) = Reader.ReadExelDictionaryFolder(ResourcesDir)
+        Call AppendDictionary(DBFL, XlL)
         If IO.File.Exists(LangDictionaryPath) Then
             Dim t As New Translator
             L = t.ReadLangDictionary(LangDictionaryPath)
         End If
-        Call Writer.Write(LangDictionaryPath, f, L, DBFL)
+        Call (New Writer).Write(LangDictionaryPath, f, L, DBFL)
         MsgBox("done")
     End Sub
     Sub make() Handles MakeButton.Click
@@ -42,6 +48,8 @@ Public Class StartForm
         Dim L As Dictionary(Of String, String) = t.ReadLangDictionary(LangDictionaryPath)
         Dim DBFL As Dictionary(Of String, String) = Nothing
         If Autotranslate() Then DBFL = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
+        Dim XlL As Dictionary(Of String, String) = Reader.ReadExelDictionaryFolder(ResourcesDir)
+        Call AppendDictionary(DBFL, XlL)
         Dim f() As Byte = Reader.ReadFile(MapPath)
         Dim translated() As Byte = t.Translate(L, DBFL, f, False)
         IO.File.WriteAllBytes(MapTranslatedPath, translated)
@@ -71,6 +79,15 @@ Public Class StartForm
     End Sub
     Private Sub WriteLastPathFile()
         Call Writer.WriteLastPathFile(PathTextBox.Text, TglobalTextBox1.Text, TglobalTextBox2.Text, AutotranslateCheckBox.Checked)
+    End Sub
+
+    Private Sub AppendDictionary(ByRef destination As Dictionary(Of String, String), _
+                                 ByRef source As Dictionary(Of String, String))
+        If IsNothing(destination) Then destination = New Dictionary(Of String, String)
+        Dim keys As List(Of String) = source.Keys.ToList
+        For Each k As String In keys
+            If Not destination.Keys.Contains(k) Then destination.Add(k, source.Item(k))
+        Next k
     End Sub
 
     Private Sub SelectFile(obj As Object, e As EventArgs) Handles MapButton.Click, Tglobal1Button.Click, Tglobal2Button.Click
@@ -114,8 +131,10 @@ Public Class StartForm
                             "               карты и файл с переводом и проверяет длину текста." & vbNewLine &
                             "               D2 не знает буквы ё, поэтому она автоматически." & vbNewLine &
                             "               заменяется на е." & vbNewLine &
-                            "После изменения нескольких блоков лучше пересобирать карту и" & vbNewLine &
-                            "проверять, запускается ли она в редакторе карт"
+                            "Можно добавить собственные словари (например, с именами/названиями чего-либо). " &
+                            "Для этого нужно закинуть файл xmlx в папку Resources. Будут прочтены все листы файла." &
+                            "Как организован сам словарь: в первом столбце английское слово или фраза, " &
+                            "а в последующих столбцах один или несколько вариантов перевода на русский."
         MsgBox(msg)
     End Sub
 End Class
@@ -152,6 +171,57 @@ Class Reader
             Return "C:\"
         End If
     End Function
+
+    Public Shared Function ReadExelDictionaryFolder(ByVal path As String) As Dictionary(Of String, String)
+        Dim dictionary As New Dictionary(Of String, String)
+        Dim files() As String = IO.Directory.GetFiles(path)
+        For i As Integer = 0 To UBound(files) Step 1
+            If files(i).ToLower.EndsWith(".xlsx") Then
+                Call ReadExcelDictionary(files(i), dictionary)
+            End If
+        Next i
+        Return dictionary
+    End Function
+    Public Shared Sub ReadExcelDictionary(ByVal path As String, ByRef destDictionary As Dictionary(Of String, String))
+        Dim f As New IO.FileInfo(path)
+        Dim w As New Excel.XLWorkbook(path)
+        Dim engWord, rusWord As String
+        For Each sheet As Excel.IXLWorksheet In w.Worksheets
+            Dim rows As Excel.IXLRangeRows = sheet.RangeUsed.RowsUsed()
+            For Each r As Excel.IXLRangeRow In rows
+                Dim cells As Excel.IXLCells = r.CellsUsed
+                engWord = "" : rusWord = ""
+                For Each c As Excel.IXLCell In cells
+                    If c.Address.ColumnNumber = 1 Then
+                        engWord = c.Value.ToString.Trim
+                    Else
+                        rusWord = c.Value.ToString.Trim
+                        If engWord = "" Then
+                            MsgBox("Empty english word at row " & c.Address.RowNumber & "(Sheet: " & sheet.Name & ")")
+                            End
+                        ElseIf rusWord = "" Then
+                            MsgBox("Empty russian word at cell " & c.Address.ColumnLetter & c.Address.RowNumber & "(Sheet: " & sheet.Name & ")")
+                            End
+                        Else
+                            For Each word As String In {engWord, rusWord}
+                                If word.Contains("  ") Then
+                                    MsgBox("Following text contains double spaces in the excel file " &
+                                           path & " (sheet " & sheet.Name & ") :" & word)
+                                    End
+                                End If
+                            Next word
+                        End If
+                        If Not destDictionary.Keys.Contains(engWord.ToLower) Then
+                            destDictionary.Add(engWord.ToLower, rusWord)
+                        End If
+                        If Not destDictionary.Keys.Contains(rusWord.ToLower) Then
+                            destDictionary.Add(rusWord.ToLower, engWord)
+                        End If
+                    End If
+                Next c
+            Next r
+        Next sheet
+    End Sub
 End Class
 
 Class Writer
@@ -159,6 +229,12 @@ Class Writer
     Public Const BlockDelimiterKeyword As String = "--------- --------- --------- --------- --------- ---------" & vbNewLine
     Public Const OrigTextKeyword As String = "# Original text" & vbNewLine
     Public Const TransTextKeyword As String = "# Translated text" & vbNewLine
+    Public Const SuggestionTextKeyword As String = "# Suggestion:"
+
+    Private ReadOnly wordDelimiter As New List(Of Char)
+    Public Sub New()
+        wordDelimiter.AddRange(" `~!@#$%^&*()-=_+':;|\/№?,." & """" & "0123456789" & vbNewLine)
+    End Sub
 
     Public Shared Function CheckCanWrite(ByRef path As String) As Boolean
         If IO.File.Exists(path) Then
@@ -168,9 +244,9 @@ Class Writer
         Return True
     End Function
 
-    Public Shared Sub Write(ByRef path As String, ByRef content As List(Of String), _
-                            Optional ByRef langDictionary As Dictionary(Of String, String) = Nothing, _
-                            Optional ByRef DBFLangDictionary As Dictionary(Of String, String) = Nothing)
+    Public Sub Write(ByRef path As String, ByRef content As List(Of String), _
+                     Optional ByRef langDictionary As Dictionary(Of String, String) = Nothing, _
+                     Optional ByRef DBFLangDictionary As Dictionary(Of String, String) = Nothing)
         Dim out() As String
         Dim printed As New List(Of String)
         Dim n As Integer = -1
@@ -191,7 +267,7 @@ Class Writer
                 If Not IsNothing(DBFLangDictionary) AndAlso DBFLangDictionary.ContainsKey(s.ToLower) Then
                     out(n) = PrintLine(s, DBFLangDictionary.Item(s.ToLower))
                 Else
-                    out(n) = PrintLine(s, "")
+                    out(n) = PrintLine(s, MakeSuggestion(s, DBFLangDictionary))
                 End If
                 printed.Add(s)
             End If
@@ -199,6 +275,50 @@ Class Writer
         If UBound(out) > n Then ReDim Preserve out(n)
         IO.File.WriteAllLines(path, out, System.Text.Encoding.GetEncoding(Reader.encID))
     End Sub
+    Private Function MakeSuggestion(ByRef text As String, ByRef DBFLangDictionary As Dictionary(Of String, String)) As String
+        Dim result As String = ""
+        If Not IsNothing(DBFLangDictionary) Then
+            Dim tLower As String = text.ToLower
+            Dim i As Integer
+            For Each k As String In DBFLangDictionary.Keys
+                If IsWord(tLower, k) Then
+                    result &= vbNewLine & k & " -> " & DBFLangDictionary.Item(k)
+                End If
+            Next k
+            If Not result = "" Then result = Writer.SuggestionTextKeyword & result
+        End If
+        Return result
+    End Function
+    Private Function IsWord(ByRef text As String, ByRef word As String) As Boolean
+        Dim searchFrom As Integer = 0
+        Dim checkStartResult, checkEndResult As Boolean
+        Dim c As Char
+        Do While searchFrom > -1
+            searchFrom = text.IndexOf(word, searchFrom)
+            If searchFrom > -1 Then
+                checkStartResult = False
+                checkEndResult = False
+                If searchFrom = 0 Then
+                    checkStartResult = True
+                Else
+                    c = text(searchFrom - 1)
+                    If wordDelimiter.Contains(c) Then checkStartResult = True
+                End If
+                If checkStartResult Then
+                    If searchFrom + word.Length = text.Length Then
+                        checkEndResult = True
+                    Else
+                        c = text(searchFrom + word.Length)
+                        If wordDelimiter.Contains(c) Then checkEndResult = True
+                    End If
+                End If
+                If checkStartResult And checkEndResult Then Return True
+                searchFrom += 1
+            End If
+        Loop
+        Return False
+    End Function
+
     Private Shared Function PrintLine(ByRef original As String, ByRef translation As String) As String
         Return BlockDelimiterKeyword & _
                OrigTextKeyword & _
@@ -642,6 +762,17 @@ Class Translator
             Dim t2 As String = PrepareString(trans, True)
             orig = Nothing : trans = Nothing
             If Not t2.Trim(" ", vbTab, Chr(10), Chr(13)) = "" Then dest.Add(t1, t2)
+            If t2.ToLower.Contains(Writer.SuggestionTextKeyword.ToLower) Then
+                MsgBox("Delete suggestions from the translation of text:" & vbNewLine & t1)
+                End
+            Else
+                For Each t As String In {t1, t2}
+                    If t.Contains("  ") Then
+                        MsgBox("Following text contains double spaces in the map file:" & vbNewLine & t)
+                        End
+                    End If
+                Next t
+            End If
         End If
     End Sub
     Private Shared Function PrepareString(ByRef txt() As Byte, ByRef replaseYo As Boolean) As String
@@ -698,6 +829,11 @@ Class Translator
             dlower(i) = New Dictionary(Of String, String)
             keys = d(i).Keys.ToList
             For Each k As String In keys
+                If d(i).Item(k).Contains("  ") Then
+                    MsgBox("Following text contains double spaces in the dbf file " &
+                           {textTable1, textTable2}(i) & " :" & vbNewLine & d(i).Item(k))
+                    End
+                End If
                 dlower(i).Add(k.ToLower, d(i).Item(k))
             Next k
         Next i
