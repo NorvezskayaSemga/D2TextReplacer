@@ -394,16 +394,13 @@ Class Parser
 
     Public Class CSGHeader
 
-        Public RecordsCount1 As Integer
-        Public RecordsCount2 As Integer
         Public Const RecordsCount1Byte As Integer = 92
 
-        Public records() As Record
+        Public records() As MQRCRecord
 
-        Public Class Record
+        Public Class MQRCRecord
             Public dataID As IntField
-            Public dataSize As IntField
-            Public blockSize As IntField
+            Public size As SizeField
             Public pos As IntLinkField
 
             Public subHeader As Subrecord
@@ -488,10 +485,60 @@ Class Parser
                     Return value & "  :  " & bias
                 End Function
             End Class
+            Public Class SizeField
+                Public data As IntField
+                Public block As IntField
+                Public signature As StrField
+
+                Public Sub New(ByVal _dataValue As Integer, ByVal _dataBias As Integer, ByVal _dataValueLen As Integer, _
+                               ByVal _blockValue As Integer, ByVal _blockBias As Integer, ByVal _blockValueLen As Integer, _
+                               ByRef _signature As StrField)
+                    data = New IntField(_dataValue, _dataBias, _dataValueLen)
+                    block = New IntField(_blockValue, _blockBias, _blockValueLen)
+                    signature = _signature
+                End Sub
+                Public Sub New(ByVal _content() As Byte, _
+                               ByVal _dataBias As Integer, ByVal _dataValueLen As Integer, _
+                               ByVal _blockBias As Integer, ByVal _blockValueLen As Integer, _
+                               ByRef _signature As StrField)
+                    data = New IntField(_content, _dataBias, _dataValueLen)
+                    block = New IntField(_content, _blockBias, _blockValueLen)
+                    signature = _signature
+                End Sub
+
+                Public Sub BytesAdded(ByRef changedAt As Integer, ByRef lenghtChange As Integer)
+                    Call data.BytesAdded(changedAt, lenghtChange)
+                    Call block.BytesAdded(changedAt, lenghtChange)
+
+                    Dim blockStartByte As Integer = Subrecord._headerLength + signature.bias
+                    Dim blockEndByte As Integer = blockStartByte + block.value
+                    If changedAt >= blockStartByte And changedAt <= blockEndByte Then
+                        If data.value = block.value Then
+                            data.value += lenghtChange
+                            block.value += lenghtChange
+                        Else
+                            data.value += lenghtChange
+                            If data.value > block.value Then
+                                Throw New Exception("Unexpected data size")
+                                End
+                            End If
+                        End If
+                    End If
+                End Sub
+
+                Public Sub PrintToArray(ByRef dest() As Byte)
+                    Call data.PrintToArray(dest)
+                    Call block.PrintToArray(dest)
+                End Sub
+
+                Public Function Print(ByVal prefix As String) As String
+                    Return prefix & data.Print & vbNewLine & _
+                           prefix & block.Print
+                End Function
+            End Class
             Public Class Subrecord
                 Public signature As StrField
-                Public dataSize As IntField
-                Public blockSize As IntField
+                Public size As SizeField
 
                 Public Const _dataSizeByte As Integer = 12
                 Public Const _blockSizeByte As Integer = 16
@@ -503,38 +550,16 @@ Class Parser
                         MsgBox("Unexpected block signature: " & signature.value)
                         End
                     End If
-                    dataSize = New IntField(content, pos + _dataSizeByte, 4)
-                    blockSize = New IntField(content, pos + _blockSizeByte, 4)
+                    size = New SizeField(content, pos + _dataSizeByte, 4, pos + _blockSizeByte, 4, signature)
                 End Sub
 
                 Public Sub BytesAdded(ByRef changedAt As Integer, ByRef lenghtChange As Integer)
-                    Call ChangeSize(dataSize, blockSize, changedAt, lenghtChange)
+                    Call size.BytesAdded(changedAt, lenghtChange)
                     Call signature.BytesAdded(changedAt, lenghtChange)
-                    Call dataSize.BytesAdded(changedAt, lenghtChange)
-                    Call blockSize.BytesAdded(changedAt, lenghtChange)
                 End Sub
 
                 Public Sub PrintToArray(ByRef dest() As Byte)
-                    Call dataSize.PrintToArray(dest)
-                    Call blockSize.PrintToArray(dest)
-                End Sub
-
-                Public Sub ChangeSize(ByRef SizeData As IntField, ByRef SizeBlock As IntField, _
-                                      ByRef changedAt As Integer, ByRef lenghtChange As Integer)
-                    Dim dataStartByte As Integer = _headerLength + signature.bias
-                    Dim dataEndByte As Integer = dataStartByte + SizeData.value
-                    If changedAt >= dataStartByte And changedAt <= dataEndByte Then
-                        If SizeData.value = SizeBlock.value Then
-                            SizeData.value += lenghtChange
-                            SizeBlock.value += lenghtChange
-                        Else
-                            SizeData.value += lenghtChange
-                            If SizeData.value > SizeBlock.value Then
-                                Throw New Exception("Unexpected data size")
-                                End
-                            End If
-                        End If
-                    End If
+                    Call size.PrintToArray(dest)
                 End Sub
             End Class
 
@@ -542,66 +567,61 @@ Class Parser
             Public Const _dataSizeByte As Integer = 4
             Public Const _blockSizeByte As Integer = 8
             Public Const _posByte As Integer = 12
-            Public Const RecordLength As Integer = 16
+            Public Const _recordLength As Integer = 16
 
             Public Sub New(ByRef content() As Byte, ByRef start As Integer)
                 dataID = New IntField(content, start + _recordIDByte, 1)
-                dataSize = New IntField(content, start + _dataSizeByte, 4)
-                blockSize = New IntField(content, start + _blockSizeByte, 4)
                 pos = New IntLinkField(content, start + _posByte, 4)
                 subHeader = New Subrecord(content, pos.value)
-                If Not dataSize.value = subHeader.dataSize.value Then
+                size = New SizeField(content, start + _dataSizeByte, 4, start + _blockSizeByte, 4, subHeader.signature)
+                If Not size.data.value = subHeader.size.data.value Then
                     MsgBox("Unexpected data size")
                     End
-                ElseIf Not blockSize.value = subHeader.blockSize.value Then
+                ElseIf Not size.block.value = subHeader.size.block.value Then
                     MsgBox("Unexpected block size")
                     End
                 End If
             End Sub
 
             Public Sub BytesAdded(ByRef changedAt As Integer, ByRef lenghtChange As Integer)
-                Call subHeader.ChangeSize(dataSize, blockSize, changedAt, lenghtChange)
+                Call size.BytesAdded(changedAt, lenghtChange)
                 Call subHeader.BytesAdded(changedAt, lenghtChange)
                 Call dataID.BytesAdded(changedAt, lenghtChange)
-                Call dataSize.BytesAdded(changedAt, lenghtChange)
-                Call blockSize.BytesAdded(changedAt, lenghtChange)
                 Call pos.BytesAdded(changedAt, lenghtChange)
             End Sub
 
             Public Sub PrintToArray(ByRef dest() As Byte)
                 Call dataID.PrintToArray(dest)
-                Call dataSize.PrintToArray(dest)
-                Call blockSize.PrintToArray(dest)
+                Call size.PrintToArray(dest)
                 Call pos.PrintToArray(dest)
                 Call subHeader.PrintToArray(dest)
             End Sub
 
             Public Function Print() As String
                 Return dataID.Print & vbNewLine & _
-                       dataSize.Print & vbNewLine & _
-                       blockSize.Print & vbNewLine & _
+                       size.Print("") & vbNewLine & _
                        pos.Print & vbNewLine & _
                        " > " & subHeader.signature.Print & vbNewLine & _
-                       " > " & subHeader.dataSize.Print & vbNewLine & _
-                       " > " & subHeader.blockSize.Print
+                       subHeader.size.Print(" > ")
             End Function
         End Class
 
         Public Sub New(ByRef content() As Byte)
-            RecordsCount1 = content(RecordsCount1Byte)
-            ReDim records(RecordsCount1 - 1)
+            Dim rCount1, rCount2 As Integer
+            rCount1 = content(RecordsCount1Byte)
+            ReDim records(rCount1 - 1)
             For i As Integer = 0 To UBound(records) Step 1
-                records(i) = New Record(content, RecordsCount1Byte + 4 + i * Record.RecordLength)
+                records(i) = New MQRCRecord(content, RecordsCount1Byte + 4 + i * MQRCRecord._recordLength)
                 Console.WriteLine(i & "  -----------------")
                 Console.WriteLine(records(i).Print)
             Next i
             Console.WriteLine("#################")
-            Dim RecordsCount2Byte As Integer = RecordsCount1Byte + 4 + RecordsCount1 * Record.RecordLength
-            RecordsCount2 = content(RecordsCount2Byte)
-            ReDim Preserve records(UBound(records) + RecordsCount2)
-            For i As Integer = 0 To RecordsCount2 - 1 Step 1
-                Dim m As Integer = RecordsCount1 + i
-                records(m) = New Record(content, RecordsCount2Byte + 4 + i * Record.RecordLength)
+            Dim RecordsCount2Byte As Integer = RecordsCount1Byte + 4 + rCount1 * MQRCRecord._recordLength
+            rCount2 = content(RecordsCount2Byte)
+            ReDim Preserve records(UBound(records) + rCount2)
+            For i As Integer = 0 To rCount2 - 1 Step 1
+                Dim m As Integer = rCount1 + i
+                records(m) = New MQRCRecord(content, RecordsCount2Byte + 4 + i * MQRCRecord._recordLength)
                 Console.WriteLine(m & "  -----------------")
                 Console.WriteLine(records(m).Print)
             Next i
@@ -617,9 +637,9 @@ Class Parser
             Dim id As Integer
             Dim signature As String
             For i As Integer = 0 To UBound(records) Step 1
-                id = (New Record.IntField(content, records(i).dataID.bias, 1)).value
+                id = (New MQRCRecord.IntField(content, records(i).dataID.bias, 1)).value
                 If Not id = records(i).dataID.value Then Throw New Exception("Unexpected id")
-                signature = (New Record.StrField(content, records(i).subHeader.signature.bias, 4)).value
+                signature = (New MQRCRecord.StrField(content, records(i).subHeader.signature.bias, 4)).value
                 If Not signature = records(i).subHeader.signature.value Then Throw New Exception("Unexpected signature")
             Next i
         End Sub
@@ -635,15 +655,14 @@ Class Parser
                 Call Compare(header1.records(i), header2.records(i))
             Next i
         End Sub
-        Public Shared Sub Compare(ByRef r1 As Record, ByRef r2 As Record)
+        Public Shared Sub Compare(ByRef r1 As MQRCRecord, ByRef r2 As MQRCRecord)
             Try
                 Call Compare(r1.dataID, r2.dataID)
-                Call Compare(r1.dataSize, r2.dataSize)
-                Call Compare(r1.blockSize, r2.blockSize)
+                Call Compare(r1.size, r2.size)
                 Call Compare(r1.pos, r2.pos)
                 Call Compare(r1.subHeader.signature, r2.subHeader.signature)
-                Call Compare(r1.subHeader.dataSize, r2.subHeader.dataSize)
-                Call Compare(r1.subHeader.blockSize, r2.subHeader.blockSize)
+                Call Compare(r1.subHeader.size, r2.subHeader.size)
+                Call Compare(r1.subHeader.size, r2.subHeader.size)
             Catch ex As Exception
                 Dim m1() As String = r1.Print.Replace(vbNewLine, Chr(13)).Split(Chr(13))
                 Dim m2() As String = r2.Print.Replace(vbNewLine, Chr(13)).Split(Chr(13))
@@ -659,11 +678,15 @@ Class Parser
                        String.Join(vbNewLine, m2))
             End Try
         End Sub
-        Public Shared Sub Compare(ByRef f1 As Record.IntField, ByRef f2 As Record.IntField)
+        Public Shared Sub Compare(ByRef f1 As MQRCRecord.SizeField, ByRef f2 As MQRCRecord.SizeField)
+            Call Compare(f1.data, f2.data)
+            Call Compare(f1.block, f2.block)
+        End Sub
+        Public Shared Sub Compare(ByRef f1 As MQRCRecord.IntField, ByRef f2 As MQRCRecord.IntField)
             If Not f1.value = f2.value Then Throw New Exception("Different value")
             If Not f1.bias = f2.bias Then Throw New Exception("Different bias")
         End Sub
-        Public Shared Sub Compare(ByRef f1 As Record.StrField, ByRef f2 As Record.StrField)
+        Public Shared Sub Compare(ByRef f1 As MQRCRecord.StrField, ByRef f2 As MQRCRecord.StrField)
             If Not f1.value = f2.value Then Throw New Exception("Different value")
             If Not f1.bias = f2.bias Then Throw New Exception("Different bias")
         End Sub
