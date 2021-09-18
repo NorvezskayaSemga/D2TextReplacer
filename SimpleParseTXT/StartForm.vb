@@ -2,6 +2,8 @@
 
 Public Class StartForm
 
+    Public Const IgnoreTextMistakes As Boolean = False
+
     Private Function LangDictionaryPath() As String
         Return PathTextBox.Text & ".dictionary.txt"
     End Function
@@ -9,7 +11,13 @@ Public Class StartForm
         Return PathTextBox.Text
     End Function
     Private Function MapTranslatedPath() As String
-        Return PathTextBox.Text & ".translated.sg"
+        If Reader.GetFileType(MapPath) = Reader.FileType.Map Then
+            Return PathTextBox.Text & ".translated.sg"
+        ElseIf Reader.GetFileType(MapPath) = Reader.FileType.Campaign Then
+            Return PathTextBox.Text & ".translated.csg"
+        Else
+            Throw New Exception("Unexpected file type")
+        End If
     End Function
     Private Function TGlobal1Path() As String
         Return TglobalTextBox1.Text
@@ -28,7 +36,7 @@ Public Class StartForm
         Call WriteLastPathFile()
         If Not Writer.CheckCanWrite(LangDictionaryPath) Then Exit Sub
         Dim p As New Parser
-        Dim f As List(Of String) = p.Parse(Reader.ReadFile(MapPath))
+        Dim f As List(Of String) = p.Parse(Reader.ReadFile(MapPath), Reader.GetFileType(MapPath))
         Dim L As Dictionary(Of String, String) = Nothing
         Dim DBFL As Dictionary(Of String, String) = Nothing
         If Autotranslate() Then DBFL = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
@@ -51,14 +59,41 @@ Public Class StartForm
         Dim XlL As Dictionary(Of String, String) = Reader.ReadExelDictionaryFolder(ResourcesDir)
         Call AppendDictionary(DBFL, XlL)
         Dim f() As Byte = Reader.ReadFile(MapPath)
-        Dim translated() As Byte = t.Translate(L, DBFL, f, False)
+        Dim h As Parser.CSGHeader = Nothing
+        If Reader.GetFileType(MapPath) = Reader.FileType.Campaign Then
+            h = New Parser.CSGHeader(f)
+            Call h.CheckFile(f)
+        End If
+        Dim translated() As Byte = t.Translate(L, DBFL, f, h, Reader.GetFileType(MapPath))
+        If Reader.GetFileType(MapPath) = Reader.FileType.Campaign Then
+            Call h.CheckFile(translated)
+            Call h.RewriteHeader(translated)
+            Call h.CheckFile(translated)
+        End If
         IO.File.WriteAllBytes(MapTranslatedPath, translated)
         MsgBox("done")
     End Sub
     Sub test() Handles TestButton.Click
         Dim t As New Translator
         Dim f() As Byte = Reader.ReadFile(MapPath)
-        Dim translated() As Byte = t.Translate(Nothing, Nothing, f, True)
+        Dim parsed As List(Of String) = (New Parser).Parse(Reader.ReadFile(MapPath), Reader.GetFileType(MapPath))
+        Dim L As New Dictionary(Of String, String)
+        For Each line As String In parsed
+            L.Add(line, line)
+        Next line
+        Dim h As Parser.CSGHeader = Nothing
+        Dim h_test As Parser.CSGHeader = Nothing
+        If Reader.GetFileType(MapPath) = Reader.FileType.Campaign Then
+            h = New Parser.CSGHeader(f)
+            h_test = New Parser.CSGHeader(f)
+            Call h.CheckFile(f)
+        End If
+        Dim translated() As Byte = t.Translate(L, Nothing, f, h, Reader.GetFileType(MapPath), h_test)
+        If Reader.GetFileType(MapPath) = Reader.FileType.Campaign Then
+            Call h.CheckFile(translated)
+            Call h.RewriteHeader(translated)
+            Call h.CheckFile(translated)
+        End If
         For i As Integer = 0 To UBound(f) Step 1
             If Not f(i) = translated(i) Then
                 Throw New Exception
@@ -67,7 +102,7 @@ Public Class StartForm
         If Not f.Length = translated.Length Then
             Throw New Exception
         End If
-        MsgBox("done")
+        MsgBox("test done")
     End Sub
 
     Sub meload() Handles Me.Load
@@ -93,7 +128,7 @@ Public Class StartForm
     Private Sub SelectFile(obj As Object, e As EventArgs) Handles MapButton.Click, Tglobal1Button.Click, Tglobal2Button.Click
         Dim buttons() As Button = {MapButton, Tglobal1Button, Tglobal2Button}
         Dim boxes() As TextBox = {PathTextBox, TglobalTextBox1, TglobalTextBox2}
-        Dim filters() As String = {"Map files (*.sg)|*.sg", "TGlobal table (*.dbf)|*.dbf", "TGlobal table (*.dbf)|*.dbf"}
+        Dim filters() As String = {"Map files (*.sg)|*.sg|Campaign files (*.csg)|*.csg", "TGlobal table (*.dbf)|*.dbf", "TGlobal table (*.dbf)|*.dbf"}
         For i As Integer = 0 To UBound(buttons) Step 1
             If obj.Equals(buttons(i)) Then
                 Dim d As New OpenFileDialog
@@ -222,6 +257,22 @@ Class Reader
             Next r
         Next sheet
     End Sub
+
+    Public Enum FileType
+        Map = 1
+        Campaign = 2
+    End Enum
+    Public Shared Function GetFileType(ByRef path As String) As FileType
+        If path.ToLower.EndsWith(".sg") Then
+            Return FileType.Map
+        ElseIf path.ToLower.EndsWith(".csg") Then
+            Return FileType.Campaign
+        Else
+            MsgBox("Unexpected file type. I expect .sg or .csg")
+            End
+        End If
+    End Function
+
 End Class
 
 Class Writer
@@ -279,7 +330,6 @@ Class Writer
         Dim result As String = ""
         If Not IsNothing(DBFLangDictionary) Then
             Dim tLower As String = text.ToLower
-            Dim i As Integer
             For Each k As String In DBFLangDictionary.Keys
                 If IsWord(tLower, k) Then
                     result &= vbNewLine & k & " -> " & DBFLangDictionary.Item(k)
@@ -341,6 +391,284 @@ End Class
 Class Parser
 
     Dim dataBlocks() As Block
+
+    Public Class CSGHeader
+
+        Public RecordsCount1 As Integer
+        Public RecordsCount2 As Integer
+        Public Const RecordsCount1Byte As Integer = 92
+
+        Public records() As Record
+
+        Public Class Record
+            Public dataID As IntField
+            Public dataSize As IntField
+            Public blockSize As IntField
+            Public pos As IntLinkField
+
+            Public subHeader As Subrecord
+
+            Public Class IntField
+                Public value As Integer
+                Public bias As Integer
+                Public size As Integer
+
+                Public Sub New(_value As Integer, _bias As Integer, ByVal _valueLen As Integer)
+                    value = _value
+                    bias = _bias
+                    size = _valueLen
+                End Sub
+                Public Sub New(_content() As Byte, _bias As Integer, ByVal _valueLen As Integer)
+                    If _valueLen = 1 Then
+                        value = _content(_bias)
+                    ElseIf _valueLen = 2 Then
+                        value = BitConverter.ToInt16(_content, _bias)
+                    ElseIf _valueLen = 4 Then
+                        value = BitConverter.ToInt32(_content, _bias)
+                    ElseIf _valueLen = 8 Then
+                        value = BitConverter.ToInt64(_content, _bias)
+                    Else
+                        Throw New Exception("Unexpected value length: " & _valueLen)
+                    End If
+                    bias = _bias
+                    size = _valueLen
+                End Sub
+
+                Public Overridable Sub BytesAdded(ByRef changedAt As Integer, ByRef lenghtChange As Integer)
+                    If bias >= changedAt Then bias += lenghtChange
+                End Sub
+
+                Public Sub PrintToArray(ByRef dest() As Byte)
+                    Dim b() As Byte = BitConverter.GetBytes(value)
+                    For i As Integer = 0 To size - 1 Step 1
+                        dest(bias + i) = b(i)
+                    Next i
+                End Sub
+
+                Public Function Print() As String
+                    Return value & "  :  " & bias
+                End Function
+            End Class
+            Public Class IntLinkField
+                Inherits IntField
+                Public Sub New(ByVal _value As Integer, _bias As Integer, ByVal _valueLen As Integer)
+                    Call MyBase.New(_value, _bias, _valueLen)
+                End Sub
+                Public Sub New(_content() As Byte, _bias As Integer, ByVal _valueLen As Integer)
+                    Call MyBase.New(_content, _bias, _valueLen)
+                End Sub
+
+                Public Overrides Sub BytesAdded(ByRef changedAt As Integer, ByRef lenghtChange As Integer)
+                    If bias >= changedAt Then bias += lenghtChange
+                    If value >= changedAt Then value += lenghtChange
+                End Sub
+            End Class
+            Public Class StrField
+                Public value As String
+                Public bias As Integer
+
+                Public Sub New(_value As String, _bias As Integer)
+                    value = _value
+                    bias = _bias
+                End Sub
+                Public Sub New(_content() As Byte, _bias As Integer, ByVal valueLen As Integer)
+                    Dim byteString(valueLen - 1) As Byte
+                    For i As Integer = 0 To valueLen - 1 Step 1
+                        byteString(i) = _content(_bias + i)
+                    Next i
+                    value = Converter.ToStr(byteString)
+                    bias = _bias
+                End Sub
+
+                Public Sub BytesAdded(ByRef changedAt As Integer, ByRef lenghtChange As Integer)
+                    If bias >= changedAt Then bias += lenghtChange
+                End Sub
+
+                Public Function Print() As String
+                    Return value & "  :  " & bias
+                End Function
+            End Class
+            Public Class Subrecord
+                Public signature As StrField
+                Public dataSize As IntField
+                Public blockSize As IntField
+
+                Public Const _dataSizeByte As Integer = 12
+                Public Const _blockSizeByte As Integer = 16
+                Public Const _headerLength As Integer = 28
+
+                Public Sub New(ByRef content() As Byte, ByRef pos As Integer)
+                    signature = New StrField(content, pos, 4)
+                    If Not signature.value = "MQRC" Then
+                        MsgBox("Unexpected block signature: " & signature.value)
+                        End
+                    End If
+                    dataSize = New IntField(content, pos + _dataSizeByte, 4)
+                    blockSize = New IntField(content, pos + _blockSizeByte, 4)
+                End Sub
+
+                Public Sub BytesAdded(ByRef changedAt As Integer, ByRef lenghtChange As Integer)
+                    Call ChangeSize(dataSize, blockSize, changedAt, lenghtChange)
+                    Call signature.BytesAdded(changedAt, lenghtChange)
+                    Call dataSize.BytesAdded(changedAt, lenghtChange)
+                    Call blockSize.BytesAdded(changedAt, lenghtChange)
+                End Sub
+
+                Public Sub PrintToArray(ByRef dest() As Byte)
+                    Call dataSize.PrintToArray(dest)
+                    Call blockSize.PrintToArray(dest)
+                End Sub
+
+                Public Sub ChangeSize(ByRef SizeData As IntField, ByRef SizeBlock As IntField, _
+                                      ByRef changedAt As Integer, ByRef lenghtChange As Integer)
+                    Dim dataStartByte As Integer = _headerLength + signature.bias
+                    Dim dataEndByte As Integer = dataStartByte + SizeData.value
+                    If changedAt >= dataStartByte And changedAt <= dataEndByte Then
+                        If SizeData.value = SizeBlock.value Then
+                            SizeData.value += lenghtChange
+                            SizeBlock.value += lenghtChange
+                        Else
+                            SizeData.value += lenghtChange
+                            If SizeData.value > SizeBlock.value Then
+                                Throw New Exception("Unexpected data size")
+                                End
+                            End If
+                        End If
+                    End If
+                End Sub
+            End Class
+
+            Public Const _recordIDByte As Integer = 0
+            Public Const _dataSizeByte As Integer = 4
+            Public Const _blockSizeByte As Integer = 8
+            Public Const _posByte As Integer = 12
+            Public Const RecordLength As Integer = 16
+
+            Public Sub New(ByRef content() As Byte, ByRef start As Integer)
+                dataID = New IntField(content, start + _recordIDByte, 1)
+                dataSize = New IntField(content, start + _dataSizeByte, 4)
+                blockSize = New IntField(content, start + _blockSizeByte, 4)
+                pos = New IntLinkField(content, start + _posByte, 4)
+                subHeader = New Subrecord(content, pos.value)
+                If Not dataSize.value = subHeader.dataSize.value Then
+                    MsgBox("Unexpected data size")
+                    End
+                ElseIf Not blockSize.value = subHeader.blockSize.value Then
+                    MsgBox("Unexpected block size")
+                    End
+                End If
+            End Sub
+
+            Public Sub BytesAdded(ByRef changedAt As Integer, ByRef lenghtChange As Integer)
+                Call subHeader.ChangeSize(dataSize, blockSize, changedAt, lenghtChange)
+                Call subHeader.BytesAdded(changedAt, lenghtChange)
+                Call dataID.BytesAdded(changedAt, lenghtChange)
+                Call dataSize.BytesAdded(changedAt, lenghtChange)
+                Call blockSize.BytesAdded(changedAt, lenghtChange)
+                Call pos.BytesAdded(changedAt, lenghtChange)
+            End Sub
+
+            Public Sub PrintToArray(ByRef dest() As Byte)
+                Call dataID.PrintToArray(dest)
+                Call dataSize.PrintToArray(dest)
+                Call blockSize.PrintToArray(dest)
+                Call pos.PrintToArray(dest)
+                Call subHeader.PrintToArray(dest)
+            End Sub
+
+            Public Function Print() As String
+                Return dataID.Print & vbNewLine & _
+                       dataSize.Print & vbNewLine & _
+                       blockSize.Print & vbNewLine & _
+                       pos.Print & vbNewLine & _
+                       " > " & subHeader.signature.Print & vbNewLine & _
+                       " > " & subHeader.dataSize.Print & vbNewLine & _
+                       " > " & subHeader.blockSize.Print
+            End Function
+        End Class
+
+        Public Sub New(ByRef content() As Byte)
+            RecordsCount1 = content(RecordsCount1Byte)
+            ReDim records(RecordsCount1 - 1)
+            For i As Integer = 0 To UBound(records) Step 1
+                records(i) = New Record(content, RecordsCount1Byte + 4 + i * Record.RecordLength)
+                Console.WriteLine(i & "  -----------------")
+                Console.WriteLine(records(i).Print)
+            Next i
+            Console.WriteLine("#################")
+            Dim RecordsCount2Byte As Integer = RecordsCount1Byte + 4 + RecordsCount1 * Record.RecordLength
+            RecordsCount2 = content(RecordsCount2Byte)
+            ReDim Preserve records(UBound(records) + RecordsCount2)
+            For i As Integer = 0 To RecordsCount2 - 1 Step 1
+                Dim m As Integer = RecordsCount1 + i
+                records(m) = New Record(content, RecordsCount2Byte + 4 + i * Record.RecordLength)
+                Console.WriteLine(m & "  -----------------")
+                Console.WriteLine(records(m).Print)
+            Next i
+        End Sub
+
+        Public Sub FileLengthChanged(ByRef changedAt As Integer, ByRef lenghtChange As Integer)
+            For i As Integer = 0 To UBound(records) Step 1
+                Call records(i).BytesAdded(changedAt, lenghtChange)
+            Next i
+        End Sub
+
+        Public Sub CheckFile(ByRef content() As Byte)
+            Dim id As Integer
+            Dim signature As String
+            For i As Integer = 0 To UBound(records) Step 1
+                id = (New Record.IntField(content, records(i).dataID.bias, 1)).value
+                If Not id = records(i).dataID.value Then Throw New Exception("Unexpected id")
+                signature = (New Record.StrField(content, records(i).subHeader.signature.bias, 4)).value
+                If Not signature = records(i).subHeader.signature.value Then Throw New Exception("Unexpected signature")
+            Next i
+        End Sub
+        Public Sub RewriteHeader(ByRef dest() As Byte)
+            For i As Integer = 0 To UBound(records) Step 1
+                Call records(i).PrintToArray(dest)
+            Next i
+        End Sub
+
+        Public Shared Sub Compare(ByRef header1 As CSGHeader, ByRef header2 As CSGHeader)
+            If IsNothing(header1) Or IsNothing(header2) Then Exit Sub
+            For i As Integer = 0 To UBound(header1.records) Step 1
+                Call Compare(header1.records(i), header2.records(i))
+            Next i
+        End Sub
+        Public Shared Sub Compare(ByRef r1 As Record, ByRef r2 As Record)
+            Try
+                Call Compare(r1.dataID, r2.dataID)
+                Call Compare(r1.dataSize, r2.dataSize)
+                Call Compare(r1.blockSize, r2.blockSize)
+                Call Compare(r1.pos, r2.pos)
+                Call Compare(r1.subHeader.signature, r2.subHeader.signature)
+                Call Compare(r1.subHeader.dataSize, r2.subHeader.dataSize)
+                Call Compare(r1.subHeader.blockSize, r2.subHeader.blockSize)
+            Catch ex As Exception
+                Dim m1() As String = r1.Print.Replace(vbNewLine, Chr(13)).Split(Chr(13))
+                Dim m2() As String = r2.Print.Replace(vbNewLine, Chr(13)).Split(Chr(13))
+                For i As Integer = 0 To UBound(m1) Step 1
+                    If m1(i) <> m2(i) Then
+                        m1(i) &= "  <--"
+                        m2(i) &= "  <--"
+                    End If
+                Next i
+                MsgBox(ex.Message & vbNewLine & _
+                       String.Join(vbNewLine, m1) & vbNewLine & _
+                       "----------" & vbNewLine & _
+                       String.Join(vbNewLine, m2))
+            End Try
+        End Sub
+        Public Shared Sub Compare(ByRef f1 As Record.IntField, ByRef f2 As Record.IntField)
+            If Not f1.value = f2.value Then Throw New Exception("Different value")
+            If Not f1.bias = f2.bias Then Throw New Exception("Different bias")
+        End Sub
+        Public Shared Sub Compare(ByRef f1 As Record.StrField, ByRef f2 As Record.StrField)
+            If Not f1.value = f2.value Then Throw New Exception("Different value")
+            If Not f1.bias = f2.bias Then Throw New Exception("Different bias")
+        End Sub
+
+    End Class
 
     Public Class Block
         Public StartsWith As String
@@ -566,54 +894,94 @@ Class Parser
         End Enum
     End Structure
 
-    Public Const initBlock As Integer = 42
-    Public Const descriptionBlock As Integer = initBlock + 256
-    Public Const AuthorBlock As Integer = descriptionBlock + 22
-    Public Const NameBlock As Integer = AuthorBlock + 64
-    Public Const HostLordStart As Integer = 609
-    Public Const HostLordEnd As Integer = HostLordStart + 14
+    Public Const sgInitBlock As Integer = 42
+    Public Const sgDescriptionBlock As Integer = sgInitBlock + 256
+    Public Const sgAuthorBlock As Integer = sgDescriptionBlock + 22
+    Public Const sgNameBlock As Integer = sgAuthorBlock + 64
+    Public Const sgHostLordStart As Integer = 609
+    Public Const sgHostLordEnd As Integer = sgHostLordStart + 14
+
+    Public Const csgInitBlock As Integer = 1179
+    Public Const csgNameBlock As Integer = csgInitBlock + 32
+    Public Const csgAuthorStart As Integer = 1469
+    Public Const csgAuthorEnd As Integer = csgAuthorStart + 31
+    Public Const csgSGBias As Integer = 1836
+
     Private blockID As Integer = -1
     Private collectedWords As New List(Of String)
 
-    Public Function Parse(ByRef fileText() As Byte) As List(Of String)
+    Public Function Parse(ByRef fileText() As Byte, ByRef fileType As Reader.FileType) As List(Of String)
         Dim t As CheckResult
         Dim i As Integer = 0
         Dim r As New List(Of String)
-        t = GetMapName(fileText)
+        If fileType = Reader.FileType.Campaign Then
+            t = GetCampaignName(fileText)
+            If Not r.Contains(t.text) Then r.Add(t.text)
+            t = GetCampaignAuthor(fileText)
+            If Not r.Contains(t.text) Then r.Add(t.text)
+        ElseIf Not fileType = Reader.FileType.Map Then
+            Throw New Exception("Unexpected type")
+        End If
+
+        t = GetMapName(fileText, fileType)
         If Not r.Contains(t.text) Then r.Add(t.text)
-        t = GetMapAuthor(fileText)
+        t = GetMapAuthor(fileText, fileType)
         If Not r.Contains(t.text) Then r.Add(t.text)
-        t = GetMapDescription(fileText)
+        t = GetMapDescription(fileText, fileType)
         If Not r.Contains(t.text) Then r.Add(t.text)
-        t = GetHostLordName(fileText)
+        t = GetMapHostLordName(fileText, fileType)
         If Not r.Contains(t.text) Then r.Add(t.text)
-        i = HostLordEnd + 1
+        i = sgHostLordEnd + 1
+        If fileType = Reader.FileType.Campaign Then i += csgSGBias
+
         Do While i <= UBound(fileText)
             t = GetText(fileText, i)
             If Not t.text = "" AndAlso Not r.Contains(t.text) Then
                 r.Add(t.text)
             End If
         Loop
+        For Each s As String In r
+            Call Translator.TestString(s)
+        Next s
         Return r
     End Function
 
-    Public Shared Function GetMapDescription(ByRef fileText() As Byte) As CheckResult
-        Dim r As New CheckResult With {.textStartByte = initBlock + 1, .textEndByte = descriptionBlock - 2}
+    Public Shared Function GetMapDescription(ByRef fileText() As Byte, ByRef fileType As Reader.FileType) As CheckResult
+        Dim b As Integer = 0
+        If fileType = Reader.FileType.Campaign Then b = csgSGBias
+        Dim r As New CheckResult With {.textStartByte = sgInitBlock + 1 + b, .textEndByte = sgDescriptionBlock - 2 + b}
         r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
         Return r
     End Function
-    Public Shared Function GetMapAuthor(ByRef fileText() As Byte) As CheckResult
-        Dim r As New CheckResult With {.textStartByte = descriptionBlock + 1, .textEndByte = AuthorBlock - 2}
+    Public Shared Function GetMapAuthor(ByRef fileText() As Byte, ByRef fileType As Reader.FileType) As CheckResult
+        Dim b As Integer = 0
+        If fileType = Reader.FileType.Campaign Then b = csgSGBias
+        Dim r As New CheckResult With {.textStartByte = sgDescriptionBlock + 1 + b, .textEndByte = sgAuthorBlock - 2 + b}
         r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
         Return r
     End Function
-    Public Shared Function GetMapName(ByRef fileText() As Byte) As CheckResult
-        Dim r As New CheckResult With {.textStartByte = AuthorBlock + 1, .textEndByte = NameBlock}
+    Public Shared Function GetMapName(ByRef fileText() As Byte, ByRef fileType As Reader.FileType) As CheckResult
+        Dim b As Integer = 0
+        If fileType = Reader.FileType.Campaign Then b = csgSGBias
+        Dim r As New CheckResult With {.textStartByte = sgAuthorBlock + 1 + b, .textEndByte = sgNameBlock + b}
         r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
         Return r
     End Function
-    Public Shared Function GetHostLordName(ByRef fileText() As Byte) As CheckResult
-        Dim r As New CheckResult With {.textStartByte = HostLordStart, .textEndByte = HostLordEnd}
+    Public Shared Function GetMapHostLordName(ByRef fileText() As Byte, ByRef fileType As Reader.FileType) As CheckResult
+        Dim b As Integer = 0
+        If fileType = Reader.FileType.Campaign Then b = csgSGBias
+        Dim r As New CheckResult With {.textStartByte = sgHostLordStart + b, .textEndByte = sgHostLordEnd + b}
+        r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
+        Return r
+    End Function
+
+    Public Shared Function GetCampaignName(ByRef fileText() As Byte) As CheckResult
+        Dim r As New CheckResult With {.textStartByte = csgInitBlock + 1, .textEndByte = csgNameBlock}
+        r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
+        Return r
+    End Function
+    Public Shared Function GetCampaignAuthor(ByRef fileText() As Byte) As CheckResult
+        Dim r As New CheckResult With {.textStartByte = csgAuthorStart, .textEndByte = csgAuthorEnd}
         r.text = Converter.ToStr(ReadFromTo(fileText, r.textStartByte, r.textEndByte, True))
         Return r
     End Function
@@ -767,12 +1135,27 @@ Class Translator
                 End
             Else
                 For Each t As String In {t1, t2}
-                    If t.Contains("  ") Then
-                        MsgBox("Following text contains double spaces in the map file:" & vbNewLine & t)
-                        End
-                    End If
+                    Call TestString(t)
                 Next t
             End If
+        End If
+    End Sub
+    Public Shared Sub TestString(ByRef txt As String)
+        If StartForm.IgnoreTextMistakes Then Exit Sub
+        If txt.Trim.Contains("  ") Then
+            Dim t As String = txt.Replace(Chr(13), Chr(10))
+            Dim i0 As Integer = -1
+            Do While Not i0 = t.Length
+                i0 = t.Length
+                t = t.Replace(Chr(10) & Chr(10), Chr(10))
+            Loop
+            Dim s() As String = t.Split(Chr(10))
+            For Each line As String In s
+                If line.Trim.Contains("  ") Then
+                    MsgBox("Following text contains double spaces in the map file:" & vbNewLine & line)
+                    End
+                End If
+            Next line
         End If
     End Sub
     Private Shared Function PrepareString(ByRef txt() As Byte, ByRef replaseYo As Boolean) As String
@@ -856,12 +1239,22 @@ Class Translator
         Public fileText() As Byte
         Public output() As Byte
         Public outI As Integer
+        Public csgHeader As Parser.CSGHeader = Nothing
 
-        Public Sub AddByte(ByRef b As Byte)
+        Public Sub AddByte(ByRef b As Byte, ByVal isTextReplacing As Boolean)
             If outI > UBound(output) Then ReDim Preserve output(outI)
             output(outI) = b
+            If Not IsNothing(csgHeader) And Not isTextReplacing Then
+                Call csgHeader.FileLengthChanged(outI, 1)
+            End If
             outI += 1
         End Sub
+        Public Sub OriginalTextRemoved(ByVal startByte As Integer, ByVal bytesAmount As Integer)
+            If Not IsNothing(csgHeader) And Not bytesAmount = 0 Then
+                Call csgHeader.FileLengthChanged(startByte, bytesAmount)
+            End If
+        End Sub
+
         Public Function Print() As String
             ReDim Preserve output(outI - 1)
             Return Converter.ToStr(output)
@@ -869,42 +1262,69 @@ Class Translator
     End Class
 
     Public Function Translate(ByRef langDict As Dictionary(Of String, String), ByRef DBFLangDict As Dictionary(Of String, String), _
-                              ByRef fileText() As Byte, ByRef test As Boolean) As Byte()
-        Dim d As New TData With {.fileText = fileText, .langDict = langDict, .DBFLangDict = DBFLangDict, .outI = 0}
+                              ByRef fileText() As Byte, _
+                              ByRef csgHeader As Parser.CSGHeader, ByRef fileType As Reader.FileType, _
+                              Optional ByRef csgHeader_forTest As Parser.CSGHeader = Nothing) As Byte()
+        Dim d As New TData With {.fileText = fileText, .langDict = langDict, .DBFLangDict = DBFLangDict, _
+                                 .csgHeader = csgHeader, .outI = 0}
         ReDim d.output(UBound(fileText))
-        If Not test Then
-            Call CopyHeader(d)
-        Else
-            Call CopyRange(d, 0, Parser.HostLordEnd)
-        End If
+        Call CopyHeader(d, fileType)
         Dim p As New Parser
         Dim t As Parser.CheckResult
-        Dim i As Integer = Parser.HostLordEnd + 1
+        Dim i As Integer = Parser.sgHostLordEnd + 1
+        If fileType = Reader.FileType.Campaign Then i += Parser.csgSGBias
+
         d.outI = i
         Dim i0 As Integer
         Do While i <= UBound(fileText)
             i0 = i
             t = p.GetText(fileText, i)
+            Call Parser.CSGHeader.Compare(d.csgHeader, csgHeader_forTest)
             If t.text = "" Then
-                Call CopyRange(d, i0, i - 1)
+                Call CopyRange(d, i0, i - 1, True)
             Else
-                Call TranslateWithDynLength(d, t, i0, test)
+                Call TranslateWithDynLength(d, t, i0)
             End If
+            Call Parser.CSGHeader.Compare(d.csgHeader, csgHeader_forTest)
         Loop
         Return d.output
     End Function
 
-    Private Sub CopyHeader(ByRef d As TData)
-        Call CopyRange(d, 0, Parser.initBlock)
-        Dim r1 As Parser.CheckResult = Parser.GetMapDescription(d.fileText)
+    Private Sub CopyHeader(ByRef d As TData, ByRef fileType As Reader.FileType)
+        If fileType = Reader.FileType.Map Then
+            Call CopyRange(d, 0, Parser.sgInitBlock, True)
+        ElseIf fileType = Reader.FileType.Campaign Then
+            Call CopyRange(d, 0, Parser.csgInitBlock, True)
+            Dim rC1 As Parser.CheckResult = Parser.GetCampaignName(d.fileText)
+            Call TranslateWithFixedLength(d, rC1)
+            Dim rC2 As Parser.CheckResult = Parser.GetCampaignAuthor(d.fileText)
+            Call TranslateWithFixedLength(d, rC2)
+            Call CopyBytesBetweenBlocks(d, rC1, rC2)
+            Call CopyBytesBetweenBlocks(d, rC2.textEndByte + 1, Parser.csgSGBias + Parser.sgInitBlock)
+        Else
+            Throw New Exception("Unexpected type")
+        End If
+        Dim r1 As Parser.CheckResult = Parser.GetMapDescription(d.fileText, fileType)
         Call TranslateWithFixedLength(d, r1)
-        Dim r2 As Parser.CheckResult = Parser.GetMapAuthor(d.fileText)
+        Dim r2 As Parser.CheckResult = Parser.GetMapAuthor(d.fileText, fileType)
         Call TranslateWithFixedLength(d, r2)
-        Dim r3 As Parser.CheckResult = Parser.GetMapName(d.fileText)
+        Dim r3 As Parser.CheckResult = Parser.GetMapName(d.fileText, fileType)
         Call TranslateWithFixedLength(d, r3)
-        Dim r4 As Parser.CheckResult = Parser.GetHostLordName(d.fileText)
+        Dim r4 As Parser.CheckResult = Parser.GetMapHostLordName(d.fileText, fileType)
         Call TranslateWithFixedLength(d, r4)
-        For i As Integer = r3.textEndByte + 1 To r4.textStartByte - 1 Step 1
+
+        Call CopyBytesBetweenBlocks(d, r1, r2)
+        Call CopyBytesBetweenBlocks(d, r2, r3)
+        Call CopyBytesBetweenBlocks(d, r3, r4)
+    End Sub
+    Private Sub CopyBytesBetweenBlocks(ByRef d As TData, ByRef b1 As Parser.CheckResult, ByRef b2 As Parser.CheckResult)
+        Dim i1 As Integer = b1.textEndByte + 1
+        Dim i2 As Integer = b2.textStartByte - 1
+        Call CopyBytesBetweenBlocks(d, i1, i2)
+    End Sub
+    Private Sub CopyBytesBetweenBlocks(ByRef d As TData, ByRef i1 As Integer, ByRef i2 As Integer)
+        If i1 > i2 Then Exit Sub
+        For i As Integer = i1 To i2 Step 1
             d.output(i) = d.fileText(i)
         Next i
     End Sub
@@ -920,59 +1340,63 @@ Class Translator
             d.output(t.textStartByte + i) = trText(i)
         Next i
     End Sub
-    Private Sub TranslateWithDynLength(ByRef d As TData, ByRef t As Parser.CheckResult, ByRef checkStarI As Integer, _
-                                       ByRef test As Boolean)
+    Private Sub TranslateWithDynLength(ByRef d As TData, ByRef t As Parser.CheckResult, ByRef checkStarI As Integer)
         Dim trText() As Byte
-        If Not test Then
-            trText = GetTranslation(d, t)
-        Else
-            trText = Converter.ToByteArray(t.text)
-        End If
+        trText = GetTranslation(d, t)
+        Dim initialOutI As Integer = d.outI
+        Dim originalBlockLen As Integer = t.textEndByte - checkStarI + 1
         If trText.Length > t.maxTextLength * t.byteBlock.Length Then
             MsgBox("Text has length of " & trText.Length & " whereas max. is " & t.maxTextLength * t.byteBlock.Length & "." _
                    & vbNewLine & Converter.ToStr(trText))
             End
         End If
         If Not t.isLongBlock Then
-            Call CopyRange(d, checkStarI, t.sizeByte - 1)
-            Call d.AddByte(UBound(trText) + 2)
+            Call CopyRange(d, checkStarI, t.sizeByte - 1, True)
+            Call d.AddByte(UBound(trText) + 2, True)
             d.outI += 3
-            Call AddRange(d, trText)
+            Call AddRange(d, trText, True)
             d.outI += 1
         Else
             Dim j1 As Integer = 0
             Dim j2 As Integer = -1
             For i As Integer = 0 To UBound(t.byteBlock) Step 1
-                Call AddRange(d, t.byteBlock(i))
+                Call AddRange(d, t.byteBlock(i), True)
                 j1 = j2 + 1
                 j2 = Math.Min(j1 + t.maxTextLength - 1, UBound(trText))
                 If j1 < j2 Then
-                    Call d.AddByte(j2 - j1 + 3)
+                    Call d.AddByte(j2 - j1 + 3, True)
                     d.outI += 3
-                    Call AddRange(d, trText, j1, j2)
-                    Call AddRange(d, Converter.ToByteArray("_"))
+                    Call AddRange(d, trText, j1, j2, True)
+                    Call AddRange(d, Converter.ToByteArray("_"), True)
                     d.outI += 1
                 Else
-                    Call d.AddByte(1)
+                    Call d.AddByte(1, True)
                     d.outI += 4
                 End If
             Next i
         End If
+        Dim finalOutI As Integer = d.outI
+        Dim lenghtChange As Integer = (finalOutI - initialOutI) - originalBlockLen
+        Call d.OriginalTextRemoved(initialOutI, lenghtChange)
     End Sub
-    Private Sub CopyRange(ByRef d As TData, ByRef i1 As Integer, ByRef i2 As Integer)
-        Call AddRange(d, d.fileText, i1, i2)
+    Private Sub CopyRange(ByRef d As TData, ByRef i1 As Integer, ByRef i2 As Integer, _
+                          ByVal isTextReplacing As Boolean)
+        Call AddRange(d, d.fileText, i1, i2, isTextReplacing)
     End Sub
-    Private Sub AddRange(ByRef d As TData, ByRef range() As Byte)
-        Call AddRange(d, range, 0, UBound(range))
+    Private Sub AddRange(ByRef d As TData, ByRef range() As Byte, _
+                         ByVal isTextReplacing As Boolean)
+        Call AddRange(d, range, 0, UBound(range), isTextReplacing)
     End Sub
-    Private Sub AddRange(ByRef d As TData, ByRef range() As Byte, ByRef i1 As Integer, ByRef i2 As Integer)
+    Private Sub AddRange(ByRef d As TData, ByRef range() As Byte, ByRef i1 As Integer, ByRef i2 As Integer, _
+                         ByVal isTextReplacing As Boolean)
         If d.outI + i2 - i1 > UBound(d.output) Then ReDim Preserve d.output(d.outI + i2 - i1)
         For i As Integer = i1 To i2 Step 1
-            Call d.AddByte(range(i))
+            Call d.AddByte(range(i), isTextReplacing)
         Next i
     End Sub
 
     Private Function GetTranslation(ByRef d As TData, ByRef t As Parser.CheckResult) As Byte()
+
         Dim p As String = PrepareString(t.text, False)
         If d.langDict.ContainsKey(p) Then
             Return Converter.ToByteArray(d.langDict.Item(p))
