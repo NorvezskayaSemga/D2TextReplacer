@@ -171,7 +171,7 @@ Partial Class StartForm
         Me.Controls.Add(Me.ParseButton)
         Me.Controls.Add(Me.PathTextBox)
         Me.Name = "StartForm"
-        Me.Text = "Form1"
+        Me.Text = "TranslateHelper by Norvezskaya Semga"
         Me.ResumeLayout(False)
         Me.PerformLayout()
 
