@@ -47,8 +47,11 @@ Public Class StartForm
         Dim f As List(Of String) = p.Parse(Reader.ReadFile(MapPath), Reader.GetFileType(MapPath))
         Dim L As Dictionary(Of String, String) = Nothing
         Dim DBFL As Dictionary(Of String, String) = Nothing
+        Dim XlL As Dictionary(Of String, String) = Nothing
+#If Not CONFIG = "TextExtractor" Then
         If Autotranslate() Then DBFL = Translator.DBFLangDictionary(TGlobal1Path, Tglobal2Path)
-        Dim XlL As Dictionary(Of String, String) = Reader.ReadExelDictionaryFolder(ResourcesDir)
+        XlL = Reader.ReadExelDictionaryFolder(ResourcesDir)
+#End If
         Call AppendDictionary(DBFL, XlL)
         If IO.File.Exists(LangDictionaryPath) Then
             Dim t As New Translator
@@ -120,7 +123,12 @@ Public Class StartForm
         TglobalTextBox2.Text = Reader.GetTglobal2Path
         AutotranslateCheckBox.Checked = Reader.GetAutotranslateState
 #If CONFIG = "TextExtractor" Then
+        Label2.Visible = False
+        TglobalTextBox1.Text = "--"
+        TglobalTextBox2.Text = "--"
+        TglobalTextBox1.Visible = False
         TglobalTextBox2.Visible = False
+        Tglobal1Button.Visible = False
         Tglobal2Button.Visible = False
         AutotranslateCheckBox.Visible = False
         AutotranslateCheckBox.Checked = False
@@ -135,10 +143,12 @@ Public Class StartForm
     Private Sub AppendDictionary(ByRef destination As Dictionary(Of String, String), _
                                  ByRef source As Dictionary(Of String, String))
         If IsNothing(destination) Then destination = New Dictionary(Of String, String)
-        Dim keys As List(Of String) = source.Keys.ToList
-        For Each k As String In keys
-            If Not destination.Keys.Contains(k) Then destination.Add(k, source.Item(k))
-        Next k
+        If Not IsNothing(source) Then
+            Dim keys As List(Of String) = source.Keys.ToList
+            For Each k As String In keys
+                If Not destination.Keys.Contains(k) Then destination.Add(k, source.Item(k))
+            Next k
+        End If
     End Sub
 
     Private Sub SelectFile(obj As Object, e As EventArgs) Handles MapButton.Click, Tglobal1Button.Click, Tglobal2Button.Click
@@ -189,11 +199,6 @@ Public Class StartForm
         MsgBox(msg)
     End Sub
 
-#If CONFIG = "TextExtractor" Then
-    Private Sub TglobalTextBox1_TextChanged(sender As System.Object, e As System.EventArgs) Handles TglobalTextBox1.TextChanged
-        TglobalTextBox2.Text = TglobalTextBox1.Text
-    End Sub
-#End If
 End Class
 
 Class Reader
