@@ -2,10 +2,18 @@
 
 Public Class StartForm
 
+#If CONFIG = "TextExtractor" Then
+    Public Const IgnoreTextMistakes As Boolean = True
+#Else
     Public Const IgnoreTextMistakes As Boolean = False
+#End If
 
     Private Function LangDictionaryPath() As String
+#If CONFIG = "TextExtractor" Then
+        Return PathTextBox.Text & ".extracted.txt"
+#Else
         Return PathTextBox.Text & ".dictionary.txt"
+#End If
     End Function
     Private Function MapPath() As String
         Return PathTextBox.Text
@@ -111,6 +119,14 @@ Public Class StartForm
         TglobalTextBox1.Text = Reader.GetTglobal1Path
         TglobalTextBox2.Text = Reader.GetTglobal2Path
         AutotranslateCheckBox.Checked = Reader.GetAutotranslateState
+#If CONFIG = "TextExtractor" Then
+        TglobalTextBox2.Visible = False
+        Tglobal2Button.Visible = False
+        AutotranslateCheckBox.Visible = False
+        AutotranslateCheckBox.Checked = False
+        MakeButton.Visible = False
+        HelpB.Visible = False
+#End If
     End Sub
     Private Sub WriteLastPathFile()
         Call Writer.WriteLastPathFile(PathTextBox.Text, TglobalTextBox1.Text, TglobalTextBox2.Text, AutotranslateCheckBox.Checked)
@@ -172,6 +188,12 @@ Public Class StartForm
                             "а в последующих столбцах один или несколько вариантов перевода на русский."
         MsgBox(msg)
     End Sub
+
+#If CONFIG = "TextExtractor" Then
+    Private Sub TglobalTextBox1_TextChanged(sender As System.Object, e As System.EventArgs) Handles TglobalTextBox1.TextChanged
+        TglobalTextBox2.Text = TglobalTextBox1.Text
+    End Sub
+#End If
 End Class
 
 Class Reader
@@ -238,13 +260,15 @@ Class Reader
                             MsgBox("Empty russian word at cell " & c.Address.ColumnLetter & c.Address.RowNumber & "(Sheet: " & sheet.Name & ")")
                             End
                         Else
-                            For Each word As String In {engWord, rusWord}
-                                If word.Contains("  ") Then
-                                    MsgBox("Following text contains double spaces in the excel file " &
-                                           path & " (sheet " & sheet.Name & ") :" & word)
-                                    End
-                                End If
-                            Next word
+                            If Not StartForm.IgnoreTextMistakes Then
+                                For Each word As String In {engWord, rusWord}
+                                    If word.Contains("  ") Then
+                                        MsgBox("Following text contains double spaces in the excel file " &
+                                               path & " (sheet " & sheet.Name & ") :" & word)
+                                        End
+                                    End If
+                                Next word
+                            End If
                         End If
                         If Not destDictionary.Keys.Contains(engWord.ToLower) Then
                             destDictionary.Add(engWord.ToLower, rusWord)
@@ -290,7 +314,13 @@ Class Writer
     Public Shared Function CheckCanWrite(ByRef path As String) As Boolean
         If IO.File.Exists(path) Then
             Dim answer As MsgBoxResult = MsgBox("Do you want to replace file " & path & "?", MsgBoxStyle.YesNo)
-            If answer = MsgBoxResult.No Then Return False
+            If answer = MsgBoxResult.No Then
+                Return False
+#If CONFIG = "TextExtractor" Then
+            Else
+                Kill(path)
+#End If
+            End If
         End If
         Return True
     End Function
@@ -370,6 +400,10 @@ Class Writer
     End Function
 
     Private Shared Function PrintLine(ByRef original As String, ByRef translation As String) As String
+#If CONFIG = "TextExtractor" Then
+        Return BlockDelimiterKeyword & _
+               original
+#Else
         Return BlockDelimiterKeyword & _
                OrigTextKeyword & _
                BlockDelimiterKeyword & _
@@ -378,6 +412,7 @@ Class Writer
                TransTextKeyword & _
                BlockDelimiterKeyword & _
                translation
+#End If
     End Function
 
     Public Shared Sub WriteLastPathFile(ByRef mapFile As String, ByRef tglobal1 As String, ByRef tglobal2 As String, _
@@ -1235,10 +1270,12 @@ Class Translator
             dlower(i) = New Dictionary(Of String, String)
             keys = d(i).Keys.ToList
             For Each k As String In keys
-                If d(i).Item(k).Contains("  ") Then
-                    MsgBox("Following text contains double spaces in the dbf file " &
-                           {textTable1, textTable2}(i) & " :" & vbNewLine & d(i).Item(k))
-                    End
+                If Not StartForm.IgnoreTextMistakes Then
+                    If d(i).Item(k).Contains("  ") Then
+                        MsgBox("Following text contains double spaces in the dbf file " &
+                               {textTable1, textTable2}(i) & " :" & vbNewLine & d(i).Item(k))
+                        End
+                    End If
                 End If
                 dlower(i).Add(k.ToLower, d(i).Item(k))
             Next k
