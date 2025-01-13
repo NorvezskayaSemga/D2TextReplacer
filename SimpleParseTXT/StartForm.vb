@@ -350,6 +350,7 @@ Class Writer
         For Each s As String In content
             If Not printed.Contains(s) Then
                 n += 1
+                If n > UBound(out) Then ReDim Preserve out(n)
                 If Not IsNothing(DBFLangDictionary) AndAlso DBFLangDictionary.ContainsKey(s.ToLower) Then
                     out(n) = PrintLine(s, DBFLangDictionary.Item(s.ToLower))
                 Else
@@ -1211,6 +1212,7 @@ Class Translator
             Do While Not i0 = t.Length
                 i0 = t.Length
                 t = t.Replace(Chr(10) & Chr(10), Chr(10))
+                t = t.Replace("  ", " ")
             Loop
             Dim s() As String = t.Split(Chr(10))
             For Each line As String In s
